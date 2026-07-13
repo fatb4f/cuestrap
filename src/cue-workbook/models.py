@@ -15,6 +15,7 @@ PROBE_PROTOCOL = "cuestrap.probe-request.v0"
 OBSERVATION_PROTOCOL = "cuestrap.probe-observation.v0"
 ENVIRONMENT_PROTOCOL = "cuestrap.environment.v0"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_PACKAGE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CLAIMANT_KEYS = frozenset(
     {
         "success",
@@ -81,6 +82,8 @@ class ProbeRequest(BaseModel):
     def validate_shape(self) -> "ProbeRequest":
         if not _SAFE_ID.fullmatch(self.probe_id):
             raise ValueError("probeID is not a safe identifier")
+        if not _PACKAGE.fullmatch(self.package):
+            raise ValueError("package is not a CUE package identifier")
         if self.operation == "subsumes" and not self.candidate_expression:
             raise ValueError("subsumes requires candidateExpression")
         if self.operation == "evaluate" and self.candidate_expression is not None:
@@ -117,6 +120,14 @@ class SemanticSubject(BaseModel):
     concrete_input_digest: str | None = Field(alias="concreteInputDigest")
     digest: str
 
+    @model_validator(mode="after")
+    def digest_matches_components(self) -> "SemanticSubject":
+        components = self.model_dump(by_alias=True, exclude={"digest"})
+        expected = _digest_bytes(_json_bytes(components))
+        if self.digest != expected:
+            raise ValueError("semantic subject digest does not match its components")
+        return self
+
 
 class ProbeObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -129,6 +140,12 @@ class ProbeObservation(BaseModel):
     facts: dict[str, Any]
     diagnostics: list[dict[str, Any]] = Field(default_factory=list)
     commands: list[ProcessObservation] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_claimant_fields(cls, value: object) -> object:
+        _reject_claimant_fields(value, "probe observation")
+        return value
 
 
 class EnvironmentReport(BaseModel):
