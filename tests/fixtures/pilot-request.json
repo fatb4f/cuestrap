@@ -1,0 +1,15 @@
+{
+  "schema": "cuestrap.probe-request.v0",
+  "probeID": "pilot.placeholder",
+  "moduleRoot": ".",
+  "package": "bootstrap",
+  "files": [
+    {
+      "path": "pattern/pilot.cue"
+    }
+  ],
+  "operation": "evaluate",
+  "subjectExpression": "#Pilot",
+  "candidateExpression": null,
+  "concreteInput": null
+}
