@@ -10,13 +10,14 @@ args = [
   "--exact",
   "--",
   "python",
-  "workbook/cue_workbook.py",
+  "src/cue-workbook/cue-workbook.py",
   "--serve-mcp",
   "cue-lsp",
 ]
 cwd = "."
 enabled = true
 required = true
+enabled_tools = ["diagnostics", "hover", "definition", "references", "document_symbols"]
 startup_timeout_sec = 20
 tool_timeout_sec = 30
 supports_parallel_tool_calls = false
@@ -34,13 +35,14 @@ args = [
   "--exact",
   "--",
   "python",
-  "workbook/cue_workbook.py",
+  "src/cue-workbook/cue-workbook.py",
   "--serve-mcp",
   "gopls",
 ]
 cwd = "."
 enabled = true
 required = false
+enabled_tools = ["diagnostics", "hover", "definition", "references", "document_symbols"]
 startup_timeout_sec = 20
 tool_timeout_sec = 30
 supports_parallel_tool_calls = false
