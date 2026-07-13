@@ -7,11 +7,11 @@ The repository establishes a reusable workflow for aligning one idiomatic CUE pa
 ## Environment
 
 ```bash
-uv sync --locked --exact
+uv sync --locked
 direnv allow
 ```
 
-`direnv` activates `.venv` and fails when the project and lock are not exactly synchronized. Codex MCP servers independently launch through the same locked `uv` project from `.codex/config.toml`.
+`uv sync` is exact by default. `direnv` activates `.venv` and fails when the project and lock are not exactly synchronized. Codex MCP servers independently launch through the same locked `uv` project from `.codex/config.toml`.
 
 ## Workbook
 
