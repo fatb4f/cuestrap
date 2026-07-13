@@ -7,14 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from harness import (
-    DEFAULT_WORKBOOK_REQUEST,
-    HarnessError,
-    _cue_py_worker,
-    _reject_claimant_fields,
-    execute_probe,
-    run_architecture_validation,
-)
+from harness import HarnessError, _cue_py_worker, _reject_claimant_fields
 from lsp_mcp import McpServer
 
 
@@ -28,11 +21,16 @@ def create_app():
 
     @app.cell
     def _():
+        from pathlib import Path
+
         import marimo as mo
-        return (mo,)
+
+        from harness import DEFAULT_WORKBOOK_REQUEST, execute_probe, run_architecture_validation
+
+        return DEFAULT_WORKBOOK_REQUEST, Path, execute_probe, mo, run_architecture_validation
 
     @app.cell
-    def _():
+    def _(DEFAULT_WORKBOOK_REQUEST, Path):
         execution_mode = "interactive"
         repo_root = str(Path.cwd())
         workbook_request = DEFAULT_WORKBOOK_REQUEST
@@ -52,7 +50,7 @@ def create_app():
         return run_environment, run_probe
 
     @app.cell
-    def _(execution_mode, repo_root, run_environment):
+    def _(Path, execution_mode, repo_root, run_architecture_validation, run_environment):
         if run_environment.value or execution_mode == "validate":
             environment_result = run_architecture_validation(Path(repo_root))
         else:
@@ -60,7 +58,7 @@ def create_app():
         return (environment_result,)
 
     @app.cell
-    def _(execution_mode, repo_root, run_probe, workbook_request):
+    def _(Path, execute_probe, execution_mode, repo_root, run_probe, workbook_request):
         if run_probe.value or execution_mode == "probe":
             try:
                 probe_result = execute_probe(Path(repo_root), workbook_request)
