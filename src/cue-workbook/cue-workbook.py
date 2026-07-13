@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, Mapping
 
 from harness import (
     DEFAULT_WORKBOOK_REQUEST,
@@ -32,8 +33,10 @@ def create_app():
 
     @app.cell
     def _():
+        execution_mode = "interactive"
+        repo_root = str(Path.cwd())
         workbook_request = DEFAULT_WORKBOOK_REQUEST
-        return (workbook_request,)
+        return execution_mode, repo_root, workbook_request
 
     @app.cell
     def _(mo):
@@ -49,18 +52,18 @@ def create_app():
         return run_environment, run_probe
 
     @app.cell
-    def _(run_environment):
-        if run_environment.value:
-            environment_result = run_architecture_validation(Path.cwd())
+    def _(execution_mode, repo_root, run_environment):
+        if run_environment.value or execution_mode == "validate":
+            environment_result = run_architecture_validation(Path(repo_root))
         else:
             environment_result = {"status": "pending"}
         return (environment_result,)
 
     @app.cell
-    def _(run_probe, workbook_request):
-        if run_probe.value:
+    def _(execution_mode, repo_root, run_probe, workbook_request):
+        if run_probe.value or execution_mode == "probe":
             try:
-                probe_result = execute_probe(Path.cwd(), workbook_request)
+                probe_result = execute_probe(Path(repo_root), workbook_request)
             except Exception as error:
                 probe_result = {"status": "error", "error": f"{type(error).__name__}: {error}"}
         else:
@@ -68,9 +71,10 @@ def create_app():
         return (probe_result,)
 
     @app.cell
-    def _(environment_result, mo, probe_result, workbook_request):
+    def _(environment_result, execution_mode, mo, probe_result, workbook_request):
         mo.vstack(
             [
+                mo.md(f"**Execution mode:** `{execution_mode}`"),
                 mo.md("## Iteration request"),
                 mo.json(workbook_request),
                 mo.md("## Environment"),
@@ -93,6 +97,18 @@ def _load_json(path: Path) -> object:
     return value
 
 
+def _run_workbook(defs: Mapping[str, Any], result_name: str) -> dict[str, Any]:
+    if app is None:
+        raise RuntimeError("marimo is unavailable; run through the locked uv project")
+    _outputs, definitions = app.run(defs=dict(defs))
+    result = definitions.get(result_name)
+    if not isinstance(result, dict):
+        raise RuntimeError(f"workbook did not produce {result_name}")
+    if result.get("status") == "error":
+        raise RuntimeError(str(result.get("error", "workbook execution failed")))
+    return result
+
+
 def _main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
@@ -108,10 +124,22 @@ def _main() -> int:
     if args.serve_mcp:
         return McpServer(args.serve_mcp, root).serve()
     if args.validate:
-        print(json.dumps(run_architecture_validation(root), sort_keys=True, indent=2))
-        return 0
+        result = _run_workbook(
+            {"execution_mode": "validate", "repo_root": str(root)},
+            "environment_result",
+        )
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0 if result.get("status") == "pass" else 1
     if args.probe_request:
-        print(json.dumps(execute_probe(root, _load_json(args.probe_request)), sort_keys=True, indent=2))
+        result = _run_workbook(
+            {
+                "execution_mode": "probe",
+                "repo_root": str(root),
+                "workbook_request": _load_json(args.probe_request),
+            },
+            "probe_result",
+        )
+        print(json.dumps(result, sort_keys=True, indent=2))
         return 0
     if app is None:
         raise RuntimeError("marimo is unavailable; run through the locked uv project")
