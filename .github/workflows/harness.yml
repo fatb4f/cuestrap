@@ -1,0 +1,50 @@
+name: bootstrap harness
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Synchronize the committed uv project
+        run: uv sync --locked
+
+      - name: Parse project configuration
+        run: |
+          uv run --project . --locked --exact -- python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          tomllib.loads(Path("pyproject.toml").read_text())
+          tomllib.loads(Path(".codex/config.toml").read_text())
+          PY
+          bash -n .envrc
+
+      - name: Compile workbook sources
+        run: |
+          uv run --project . --locked --exact -- \
+            python -m compileall -q src/cue-workbook tests
+
+      - name: Run harness unit tests
+        run: |
+          uv run --project . --locked --exact -- \
+            python -m unittest discover -s tests -v
+
+      - name: Exercise browserless workbook transport
+        run: |
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/cue-workbook.py \
+              --probe-request tests/fixtures/pilot-request.json \
+            | tee /tmp/cuestrap-probe.json
+          grep -q '"schema": "cuestrap.workbook-result.v0"' /tmp/cuestrap-probe.json
