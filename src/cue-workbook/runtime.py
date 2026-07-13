@@ -86,8 +86,9 @@ def observe_environment(root: Path) -> EnvironmentReport:
         locked = exact = False
     else:
         lock_check = run_process((uv, "lock", "--check", "--project", str(root)), cwd=root)
+        # uv sync is exact by default; --inexact is intentionally not used.
         sync_check = run_process(
-            (uv, "sync", "--check", "--locked", "--exact", "--project", str(root)),
+            (uv, "sync", "--check", "--locked", "--project", str(root)),
             cwd=root,
             env=os.environ,
         )
