@@ -1,7 +1,18 @@
 [project]
 name = "cuestrap"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "cffi>=1.16,<3",
+    "hypothesis>=6,<7",
+    "marimo>=0.19,<1",
+    "pydantic>=2,<3",
+]
+
+[tool.uv]
+package = false
+
+[tool.cuestrap.project]
+schema = "cuestrap.uv-project.v1"
+workbook = "src/cue-workbook/cue-workbook.py"
+environment = ".venv"

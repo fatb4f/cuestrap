@@ -1,0 +1,50 @@
+# Schema reference:
+# https://learn.chatgpt.com/docs/config-schema.json
+
+[mcp_servers.cue_lsp]
+command = "uv"
+args = [
+  "run",
+  "--project", ".",
+  "--locked",
+  "--exact",
+  "--",
+  "python",
+  "workbook/cue_workbook.py",
+  "--serve-mcp",
+  "cue-lsp",
+]
+cwd = "."
+enabled = true
+required = true
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+supports_parallel_tool_calls = false
+
+[mcp_servers.cue_lsp.env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+PYTHONUNBUFFERED = "1"
+
+[mcp_servers.gopls]
+command = "uv"
+args = [
+  "run",
+  "--project", ".",
+  "--locked",
+  "--exact",
+  "--",
+  "python",
+  "workbook/cue_workbook.py",
+  "--serve-mcp",
+  "gopls",
+]
+cwd = "."
+enabled = true
+required = false
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+supports_parallel_tool_calls = false
+
+[mcp_servers.gopls.env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+PYTHONUNBUFFERED = "1"
