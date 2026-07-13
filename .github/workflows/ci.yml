@@ -1,0 +1,45 @@
+name: bootstrap validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install pinned CUE CLI
+        run: go install cuelang.org/go/cmd/cue@v0.13.2
+      - name: Synchronize locked environment
+        run: uv sync --locked --exact
+      - name: Compile Python sources
+        run: uv run --locked --exact python -m compileall -q workbook tests
+      - name: Run protocol unit tests
+        run: uv run --locked --exact python -m unittest discover -s tests -v
+      - name: Run browserless workbook validation
+        run: uv run --locked --exact python workbook/cue_workbook.py --validate
+      - name: Exercise Marimo transport
+        run: |
+          uv run --locked --exact python workbook/cue_workbook.py \
+            --probe-request tests/fixtures/basic-request.json \
+            | tee /tmp/probe.json
+          grep -q '"schema":"cuestrap.workbook-result.v0"' /tmp/probe.json
+      - name: Exercise MCP handshake
+        run: |
+          printf '%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+          | uv run --locked --exact python workbook/cue_workbook.py --serve-mcp cue-lsp \
+          | tee /tmp/mcp.jsonl
+          grep -q '"name":"diagnostics"' /tmp/mcp.jsonl

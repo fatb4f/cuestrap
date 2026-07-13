@@ -23,6 +23,7 @@ supports_parallel_tool_calls = false
 
 [mcp_servers.cue_lsp.env]
 UV_PROJECT_ENVIRONMENT = ".venv"
+CUESTRAP_REPO_ROOT = "."
 PYTHONUNBUFFERED = "1"
 
 [mcp_servers.gopls]
@@ -47,4 +48,5 @@ supports_parallel_tool_calls = false
 
 [mcp_servers.gopls.env]
 UV_PROJECT_ENVIRONMENT = ".venv"
+CUESTRAP_REPO_ROOT = "."
 PYTHONUNBUFFERED = "1"

@@ -1,0 +1,12 @@
+{
+  "schema": "cuestrap.probe-request.v0",
+  "probeID": "harness.basic.valid",
+  "moduleRoot": ".",
+  "files": [
+    "tests/fixtures/basic.cue"
+  ],
+  "operation": "lookup",
+  "expression": "valid",
+  "operand": null,
+  "backend": "cue-cli"
+}

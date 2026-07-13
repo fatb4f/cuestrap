@@ -1,7 +1,9 @@
 [project]
 name = "cuestrap"
 version = "0.1.0"
-requires-python = ">=3.14"
+description = "Single-pattern CUE bootstrap laboratory"
+readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
     "cffi>=1.16,<3",
     "hypothesis>=6,<7",
@@ -14,5 +16,5 @@ package = false
 
 [tool.cuestrap.project]
 schema = "cuestrap.uv-project.v1"
-workbook = "src/cue-workbook/cue-workbook.py"
+workbook = "workbook/cue_workbook.py"
 environment = ".venv"

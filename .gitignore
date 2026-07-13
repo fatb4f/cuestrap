@@ -1,24 +1,26 @@
-
-# --- Python & uv ---
+# Python and uv
 __pycache__/
 *.py[cod]
-*$py.class
 .venv/
 .tox/
 .mypy_cache/
 .pytest_cache/
+.hypothesis/
 .coverage
 htmlcov/
-
-# --- uv Project files ---
-# (Keep uv.lock committed, but ignore local workspace overrides)
-.python-version
 uv.lock.backup
 
-# --- marimo ---
+# marimo runtime state
 __marimo__/cache/
 __marimo__/sessions/
 
-# Optional: Ignore if you do not want to version control your notebook exports
-# __marimo__/*.html
-# __marimo__/*.ipynb
+# local CUE bindings and build outputs
+.cue-py/
+.libcue/
+*.so
+*.dylib
+*.dll
+runner/cueprobe
+
+# editor and agent worktrees
+.codex/worktrees/
