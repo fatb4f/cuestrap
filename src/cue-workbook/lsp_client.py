@@ -53,10 +53,21 @@ class LspSession:
                 "processId": os.getpid(),
                 "rootUri": self.root.as_uri(),
                 "workspaceFolders": [{"uri": self.root.as_uri(), "name": self.root.name}],
-                "capabilities": {},
+                "capabilities": {
+                    "workspace": {"configuration": True, "workspaceFolders": True},
+                    "textDocument": {
+                        "publishDiagnostics": {"relatedInformation": True},
+                        "documentSymbol": {},
+                        "definition": {},
+                        "references": {},
+                        "hover": {},
+                    },
+                },
             },
             timeout=20,
         )
+        if "error" in initialize:
+            raise HarnessError(HarnessFailure.LSP_FAILURE, f"LSP initialize failed: {initialize['error']}")
         self.capabilities = initialize.get("result", {}).get("capabilities", {})
         self.notify("initialized", {})
 
@@ -83,7 +94,12 @@ class LspSession:
                     break
                 name, _, value = line.decode("ascii", "replace").partition(":")
                 headers[name.lower().strip()] = value.strip()
-            length = int(headers.get("content-length", "0"))
+            try:
+                length = int(headers.get("content-length", "0"))
+            except ValueError:
+                continue
+            if length <= 0:
+                continue
             body = stream.read(length)
             if len(body) != length:
                 return
@@ -91,7 +107,11 @@ class LspSession:
                 message = json.loads(body)
             except json.JSONDecodeError:
                 continue
-            if "id" in message and ("result" in message or "error" in message):
+            if not isinstance(message, dict):
+                continue
+            if "id" in message and "method" in message:
+                self._respond_to_server_request(message)
+            elif "id" in message and ("result" in message or "error" in message):
                 with self._pending_lock:
                     pending = self._pending.get(int(message["id"]))
                 if pending is not None:
@@ -104,6 +124,32 @@ class LspSession:
                     diagnostics = params.get("diagnostics")
                     if isinstance(uri, str) and isinstance(diagnostics, list):
                         self._diagnostics[uri] = diagnostics
+
+    def _respond_to_server_request(self, message: Mapping[str, Any]) -> None:
+        request_id = message["id"]
+        method = message.get("method")
+        params = message.get("params")
+        if method == "workspace/configuration":
+            items = params.get("items", []) if isinstance(params, dict) else []
+            result: object = [None for _ in items]
+        elif method == "workspace/workspaceFolders":
+            result = [{"uri": self.root.as_uri(), "name": self.root.name}]
+        elif method in {
+            "client/registerCapability",
+            "client/unregisterCapability",
+            "window/workDoneProgress/create",
+        }:
+            result = None
+        else:
+            self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32601, "message": f"unsupported client method: {method}"},
+                }
+            )
+            return
+        self._send({"jsonrpc": "2.0", "id": request_id, "result": result})
 
     def _send(self, message: Mapping[str, Any]) -> None:
         if self.process.poll() is not None:
