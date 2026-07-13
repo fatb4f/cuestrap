@@ -43,8 +43,25 @@ jobs:
 
       - name: Exercise browserless workbook transport
         run: |
+          set +e
           uv run --project . --locked --exact -- \
             python src/cue-workbook/cue-workbook.py \
               --probe-request tests/fixtures/pilot-request.json \
-            | tee /tmp/cuestrap-probe.json
+              >/tmp/cuestrap-probe.json \
+              2>/tmp/cuestrap-probe.stderr
+          status=$?
+          set -e
+          cat /tmp/cuestrap-probe.json
+          cat /tmp/cuestrap-probe.stderr >&2
+          test "$status" -eq 0
           grep -q '"schema": "cuestrap.workbook-result.v0"' /tmp/cuestrap-probe.json
+
+      - name: Upload transport diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuestrap-transport-diagnostics
+          path: |
+            /tmp/cuestrap-probe.json
+            /tmp/cuestrap-probe.stderr
+          if-no-files-found: warn
