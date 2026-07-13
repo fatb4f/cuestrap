@@ -26,7 +26,14 @@ class McpServer:
     def _path(self, value: object) -> Path:
         if not isinstance(value, str) or not value:
             raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "path is required")
-        return SourceRef(path=value).resolve_under(self.root)
+        path = SourceRef(path=value).resolve_under(self.root)
+        expected = ".cue" if self.server == "cue-lsp" else ".go"
+        if path.suffix != expected:
+            raise HarnessError(
+                HarnessFailure.INVALID_PROTOCOL,
+                f"{self.server} only accepts {expected} documents: {value}",
+            )
+        return path
 
     def tools(self) -> list[dict[str, Any]]:
         position_schema = {
@@ -114,7 +121,11 @@ class McpServer:
         method = message.get("method")
         request_id = message.get("id")
         if method == "initialize":
-            requested = (message.get("params") or {}).get("protocolVersion", "2025-06-18")
+            # Establish the underlying persistent LSP session during MCP startup,
+            # rather than deferring tool availability failures to the first call.
+            self._session()
+            params = message.get("params") or {}
+            requested = params.get("protocolVersion", "2025-06-18") if isinstance(params, dict) else "2025-06-18"
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -122,6 +133,7 @@ class McpServer:
                     "protocolVersion": requested,
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": f"cuestrap-{self.server}", "version": MCP_SERVER_VERSION},
+                    "instructions": f"Advisory {self.server} language intelligence for repository-bounded source files.",
                 },
             }
         if method in {"notifications/initialized", "notifications/cancelled"}:
