@@ -105,13 +105,14 @@ def observe_environment(root: Path) -> EnvironmentReport:
     virtual = os.environ.get("VIRTUAL_ENV")
     expected = (root / ".venv").resolve()
     executable = Path(sys.executable).resolve()
-    active = executable.is_relative_to(expected) if expected.exists() else False
+    prefix = Path(sys.prefix).resolve()
+    active = prefix.is_relative_to(expected) if expected.exists() else False
     checks.append(
         {
             "id": "canonical-interpreter",
             "status": "pass" if active else "fail",
             "expected": str(expected),
-            "observed": str(executable),
+            "observed": str(prefix),
         }
     )
 
@@ -127,7 +128,7 @@ def observe_environment(root: Path) -> EnvironmentReport:
             "schema": "cuestrap.environment.v0",
             "root": str(root),
             "pythonExecutable": str(executable),
-            "pythonPrefix": str(Path(sys.prefix).resolve()),
+            "pythonPrefix": str(prefix),
             "virtualEnvironment": virtual,
             "uvProjectEnvironment": environment,
             "projectDigest": _digest_file(project),

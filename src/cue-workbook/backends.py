@@ -193,9 +193,9 @@ def _cue_py_payload(repo_root: Path, request: ProbeRequest) -> tuple[dict[str, A
 
 
 def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
-    payload, subject = _cue_py_payload(repo_root, request)
     coordinates = _cue_py_environment()
     if coordinates is None:
+        subject, _, _ = materialize_subject(repo_root, request)
         return ProbeObservation.model_validate(
             {
                 "schema": OBSERVATION_PROTOCOL,
@@ -213,6 +213,7 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
                 "commands": [],
             }
         )
+    payload, subject = _cue_py_payload(repo_root, request)
     environment, library = coordinates
     worker = run_process(
         (sys.executable, str((repo_root / WORKBOOK_PATH).resolve()), "--cue-py-worker"),

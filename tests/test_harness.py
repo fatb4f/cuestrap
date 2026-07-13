@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pydantic import ValidationError
 
@@ -13,6 +13,8 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 from mcp_server import McpServer  # noqa: E402
+from backends import observe_cue_py  # noqa: E402
+from lsp_client import LspSession  # noqa: E402
 from models import (  # noqa: E402
     DEFAULT_WORKBOOK_REQUEST,
     OBSERVATION_PROTOCOL,
@@ -25,6 +27,7 @@ from models import (  # noqa: E402
     parse_probe_request,
 )
 from validation import execute_probe, run_properties  # noqa: E402
+from runtime import observe_environment  # noqa: E402
 
 
 class HarnessTests(unittest.TestCase):
@@ -90,6 +93,48 @@ class HarnessTests(unittest.TestCase):
         self.assertFalse(result["cli"]["facts"]["available"])
         self.assertFalse(result["cuePy"]["facts"]["available"])
         self.assertTrue(result["comparison"]["equivalentSubjects"])
+
+    def test_unavailable_cue_py_does_not_preprocess_sources(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        with patch("backends._cue_py_environment", return_value=None), patch(
+            "backends._cue_py_payload", side_effect=AssertionError("payload must not be built")
+        ):
+            result = observe_cue_py(ROOT, request)
+        self.assertFalse(result.facts["available"])
+
+    def test_canonical_interpreter_uses_virtualenv_prefix(self) -> None:
+        with patch("runtime.shutil.which", return_value=None), patch(
+            "runtime.sys.executable", "/usr/bin/python3.14"
+        ), patch("runtime.sys.prefix", str(ROOT / ".venv")):
+            result = observe_environment(ROOT)
+        canonical = next(check for check in result.checks if check["id"] == "canonical-interpreter")
+        self.assertEqual(canonical["status"], "pass")
+        self.assertEqual(canonical["observed"], str((ROOT / ".venv").resolve()))
+
+    def test_diagnostics_wait_for_a_new_publication(self) -> None:
+        session = object.__new__(LspSession)
+        path = ROOT / "pattern/pilot.cue"
+        uri = path.resolve().as_uri()
+        session.server = "cue-lsp"
+        session._stderr = bytearray()
+        session._diagnostics = {uri: [{"message": "old"}]}
+        session._diagnostic_generations = {uri: 1}
+        session._diagnostic_versions = {uri: 1}
+        session._versions = {uri: 1}
+
+        def open_document(_path: Path) -> str:
+            session._versions[uri] = 2
+            return uri
+
+        def publish_diagnostics(_delay: float) -> None:
+            session._diagnostics[uri] = [{"message": "new"}]
+            session._diagnostic_generations[uri] = 2
+            session._diagnostic_versions[uri] = 2
+
+        session.open_document = Mock(side_effect=open_document)
+        with patch("lsp_client.time.sleep", side_effect=publish_diagnostics):
+            result = session.diagnostics(path)
+        self.assertEqual(result["diagnostics"], [{"message": "new"}])
 
     def test_mcp_tool_surface_is_narrow(self) -> None:
         tools = McpServer("cue-lsp", ROOT).tools()

@@ -42,6 +42,8 @@ class LspSession:
         self._pending_lock = threading.Lock()
         self._notifications: list[dict[str, Any]] = []
         self._diagnostics: dict[str, list[dict[str, Any]]] = {}
+        self._diagnostic_generations: dict[str, int] = {}
+        self._diagnostic_versions: dict[str, int] = {}
         self._next_id = 1
         self._versions: dict[str, int] = {}
         self._stderr = bytearray()
@@ -124,6 +126,12 @@ class LspSession:
                     diagnostics = params.get("diagnostics")
                     if isinstance(uri, str) and isinstance(diagnostics, list):
                         self._diagnostics[uri] = diagnostics
+                        self._diagnostic_generations[uri] = self._diagnostic_generations.get(uri, 0) + 1
+                        version = params.get("version")
+                        if isinstance(version, int):
+                            self._diagnostic_versions[uri] = version
+                        else:
+                            self._diagnostic_versions.pop(uri, None)
 
     def _respond_to_server_request(self, message: Mapping[str, Any]) -> None:
         request_id = message["id"]
@@ -212,14 +220,24 @@ class LspSession:
         return uri
 
     def diagnostics(self, path: Path) -> dict[str, Any]:
+        uri = path.resolve(strict=True).as_uri()
+        generation = self._diagnostic_generations.get(uri, 0)
         uri = self.open_document(path)
+        document_version = self._versions[uri]
         deadline = time.monotonic() + 3
-        while uri not in self._diagnostics and time.monotonic() < deadline:
+        fresh = False
+        while time.monotonic() < deadline:
+            diagnostic_version = self._diagnostic_versions.get(uri)
+            fresh = self._diagnostic_generations.get(uri, 0) > generation and (
+                diagnostic_version is None or diagnostic_version >= document_version
+            )
+            if fresh:
+                break
             time.sleep(0.05)
         return {
             "server": self.server,
             "path": str(path),
-            "diagnostics": self._diagnostics.get(uri, []),
+            "diagnostics": self._diagnostics.get(uri, []) if fresh else [],
             "stderr": self.stderr,
             "authoritative": False,
         }

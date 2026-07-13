@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from harness import HarnessError, _cue_py_worker, _reject_claimant_fields
+from harness import DEFAULT_WORKBOOK_REQUEST, HarnessError, _cue_py_worker, _reject_claimant_fields
 from lsp_mcp import McpServer
 
 
@@ -123,7 +123,11 @@ def _main() -> int:
         return McpServer(args.serve_mcp, root).serve()
     if args.validate:
         result = _run_workbook(
-            {"execution_mode": "validate", "repo_root": str(root)},
+            {
+                "execution_mode": "validate",
+                "repo_root": str(root),
+                "workbook_request": DEFAULT_WORKBOOK_REQUEST,
+            },
             "environment_result",
         )
         print(json.dumps(result, sort_keys=True, indent=2))
