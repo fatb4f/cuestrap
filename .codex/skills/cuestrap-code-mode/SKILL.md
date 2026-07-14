@@ -26,37 +26,64 @@ Keep `--no-token` restricted to the loopback-bound bootstrap laboratory. Codex u
 
 During qualified runs, call only `src/cue-workbook/code_mode_client.py`. Do not call Marimo's `list_sessions` or `execute_code` tools directly and do not edit a live notebook file with filesystem tools.
 
-Inspect the one session bound to the canonical workbook path:
+Every invocation consumes an immutable `bootstrap-run-binding/v1` document. Resolve a session only in `inspect` or `probe`, using a `resolve-session` request whose selection rule is exactly `exactly-one-by-workbook-path`:
 
 ```bash
 uv run --project . --locked --exact -- \
   python src/cue-workbook/code_mode_client.py \
-  --workbook src/cue-workbook/cue-workbook.py inspect
+  --run-binding RUN.json \
+  resolve-session RESOLVE.json
 ```
 
-Run exactly one existing cell by stable cell ID:
+Retain the issued `bootstrap_client.generated.models.SessionBinding` JSON unchanged. Later invocations receive it explicitly and may not substitute a session ordinal, recent session, or agent-selected session ID.
+
+Capture a bounded state projection:
 
 ```bash
 uv run --project . --locked --exact -- \
   python src/cue-workbook/code_mode_client.py \
-  --workbook src/cue-workbook/cue-workbook.py run-cell CELL_ID
+  --run-binding RUN.json \
+  --session-binding SESSION.json \
+  capture-state CAPTURE.json
 ```
 
-Submit a closed transaction from JSON:
+Run one focused probe from the approved `variable-repr` or `cell-source` template. The request must declare exactly one subject and its expected observation shape:
 
 ```bash
 uv run --project . --locked --exact -- \
   python src/cue-workbook/code_mode_client.py \
-  --workbook src/cue-workbook/cue-workbook.py transact REQUEST.json
+  --run-binding RUN.json \
+  --session-binding SESSION.json \
+  run-focused-probe PROBE.json
 ```
 
-Use schema `cuestrap.marimo-cell-transaction.v0`. Allowed operations are `create`, `edit`, `delete`, `move`, and `run`. For `edit` or `delete`, copy `expectedCodeDigest` from the latest inspection; the client re-reads and verifies it inside the transaction. Keep batches focused and at most 16 operations.
+Apply one replacement-based cell transaction only in `implement`. Copy each `expectedPreimageDigest` and the `expectedWorkbookRevision` from a fresh capture; declare every target cell and replacement source digest:
+
+```bash
+uv run --project . --locked --exact -- \
+  python src/cue-workbook/code_mode_client.py \
+  --run-binding RUN.json \
+  --session-binding SESSION.json \
+  apply-cell-transaction TRANSACTION.json
+```
+
+The closed operation union is `resolve-session`, `capture-state`, `run-focused-probe`, and `apply-cell-transaction`. There is no raw `execute_code`, arbitrary Python, create/delete/move instruction, or agent-authored MCP request surface.
+
+Use the run phase as a dispatch boundary:
+
+- `inspect`: resolve and capture only.
+- `probe`: resolve, capture, and one approved scratchpad probe.
+- `implement`: capture and one bounded replacement transaction.
+- `evaluate`: capture and approved probes; native runners remain separate explicit adapters.
+- `collect-evidence`: read-only capture and serialization only.
+
+After a transaction, capture a fresh state before proposing another transaction. After quarantine, do not mutate until a fresh capture produces new preimages.
 
 ## Preserve the authority boundary
 
 - Treat the client envelope as a raw observation, not a semantic verdict.
 - Never translate runtime completion into `valid`, `passed`, `admitted`, or an equivalent claim.
-- Preserve the envelope's session, workbook, cell, engine, request, output, and file digests.
+- Preserve the run, attempt, controller, skill, client, session, workbook, cell, engine, request, generated-code, output, and CUE-authority identities.
 - Let CUE and the native runners derive conclusions from observations.
 - Diagnose in a separate session from execution. Apply one accepted correction in a later phase.
 
@@ -64,8 +91,8 @@ Use schema `cuestrap.marimo-cell-transaction.v0`. Allowed operations are `create
 
 Perform these independently and retain each JSON envelope:
 
-1. Run `inspect`; require one exact workbook session and record cells, graph, variables, outputs, and errors.
-2. Run one stable cell ID with `run-cell`; inspect the post-execution capture.
-3. Submit one focused source transaction; verify the requested cell identity in the capture and require `observation.durability.state` to be `observed`.
+1. Resolve exactly one session and capture selected cells, graph, and errors; require no changed live-cell identities.
+2. Run one approved focused scratchpad probe; record execution and shape facts while requiring live-cell identities to remain unchanged.
+3. Submit one preimage-bound replacement transaction; require `structuralResult: applied-as-declared`, then run evaluation separately.
 
-If session selection is zero or ambiguous, stop and correct the live-session binding. If durability remains `unchanged`, do not describe the transaction as durable.
+If session selection is zero or ambiguous, stop and correct the live-session binding. A released probe observation is not a semantically passing probe, and `applied-as-declared` is not a valid-workbook conclusion.

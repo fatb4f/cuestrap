@@ -1,0 +1,22 @@
+{
+  "kind": "capture-state",
+  "operationID": "capture-fixture",
+  "projection": {
+    "cells": true,
+    "graph": true,
+    "variables": false,
+    "outputs": false,
+    "errors": true
+  },
+  "cellSelection": {
+    "kind": "explicit",
+    "cellIDs": ["cell-1"]
+  },
+  "maximumOutputBytes": 65536,
+  "limits": {
+    "timeoutMilliseconds": 30000,
+    "maximumOutputBytes": 65536,
+    "maximumStdoutBytes": 65536,
+    "maximumStderrBytes": 65536
+  }
+}

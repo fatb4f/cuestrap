@@ -1,0 +1,29 @@
+{
+  "kind": "apply-cell-transaction",
+  "operationID": "transaction-fixture",
+  "transactionID": "replace-cell-1",
+  "targetCells": [
+    {
+      "cellID": "cell-1",
+      "expectedPreimageDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "replacement": {
+        "source": "value = 2",
+        "sourceDigest": "sha256:9cfe9326a093ba971d37fdec22083b9a44ed0d4013370dfada81b9bd27994f3e"
+      }
+    }
+  ],
+  "expectedWorkbookRevision": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "postCapture": {
+    "cells": true,
+    "graph": true,
+    "variables": false,
+    "outputs": false,
+    "errors": true
+  },
+  "limits": {
+    "timeoutMilliseconds": 30000,
+    "maximumOutputBytes": 65536,
+    "maximumStdoutBytes": 65536,
+    "maximumStderrBytes": 65536
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "kind": "capture-state",
+  "operationID": "invalid-unrestricted-request",
+  "projection": {
+    "cells": true,
+    "graph": true,
+    "variables": false,
+    "outputs": false,
+    "errors": true
+  },
+  "cellSelection": {
+    "kind": "all"
+  },
+  "maximumOutputBytes": 65536,
+  "limits": {
+    "timeoutMilliseconds": 30000,
+    "maximumOutputBytes": 65536,
+    "maximumStdoutBytes": 65536,
+    "maximumStderrBytes": 65536
+  },
+  "code": "import os"
+}

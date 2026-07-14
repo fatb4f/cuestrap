@@ -1,0 +1,26 @@
+{
+  "kind": "run-focused-probe",
+  "operationID": "probe-fixture",
+  "questionID": "cell-source-identity",
+  "subject": {
+    "workbookPath": "src/cue-workbook/cue-workbook.py",
+    "cellIDs": ["cell-1"],
+    "variableNames": []
+  },
+  "probe": {
+    "templateID": "cell-source",
+    "parameters": {
+      "cellID": "cell-1"
+    }
+  },
+  "expectedObservationShape": {
+    "kind": "object",
+    "requiredKeys": ["cellID", "sourceDigest"]
+  },
+  "limits": {
+    "timeoutMilliseconds": 30000,
+    "maximumOutputBytes": 65536,
+    "maximumStdoutBytes": 65536,
+    "maximumStderrBytes": 65536
+  }
+}
