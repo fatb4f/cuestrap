@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -61,13 +62,20 @@ type Observation struct {
 }
 
 func main() {
-	var payload Payload
-	if err := json.NewDecoder(os.Stdin).Decode(&payload); err != nil { fail(err) }
+	payload, err := decodePayload(os.Stdin)
+	if err != nil { fail(err) }
 	observation, err := execute(payload)
 	if err != nil { fail(err) }
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(observation); err != nil { fail(err) }
+}
+
+func decodePayload(reader io.Reader) (Payload, error) {
+	var payload Payload
+	decoder := json.NewDecoder(reader)
+	decoder.UseNumber()
+	return payload, decoder.Decode(&payload)
 }
 
 func execute(payload Payload) (Observation, error) {

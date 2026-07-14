@@ -73,14 +73,30 @@ def _parse_worker_output(stdout: str, subject: SemanticSubject) -> ProbeObservat
     return observation
 
 
+def _gopy_string_slice(bindings: Any, values: list[str]) -> Any:
+    return bindings.go.Slice_string(values)
+
+
+def _cueprobe_path(repo_root: Path, configured: str | None, platform_name: str) -> Path:
+    if configured:
+        return Path(configured).resolve()
+    name = "cueprobe.exe" if platform_name == "nt" else "cueprobe"
+    return (repo_root / "runner" / "bin" / name).resolve()
+
+
 def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
     payload, subject = _payload(repo_root, request)
     workbook_root = (repo_root / WORKBOOK_PATH).resolve().parent
-    module_root = Path(os.environ.get("CUESTRAP_GOPY_MODULE_DIR", workbook_root / "cue_native"))
+    configured = os.environ.get("CUESTRAP_GOPY_MODULE_DIR")
+    module_root = Path(configured).resolve() if configured else workbook_root / "cue_native"
     if not module_root.exists():
         return _unavailable(subject, "gopy-worker", f"generated extension missing: {module_root}")
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(workbook_root) + os.pathsep + environment.get("PYTHONPATH", "")
+    import_roots = [module_root.parent, workbook_root] if configured else [workbook_root]
+    pythonpath = list(dict.fromkeys(str(path) for path in import_roots))
+    if environment.get("PYTHONPATH"):
+        pythonpath.append(environment["PYTHONPATH"])
+    environment["PYTHONPATH"] = os.pathsep.join(pythonpath)
     worker = run_process(
         (sys.executable, str((repo_root / WORKBOOK_PATH).resolve()), "--gopy-worker"),
         cwd=repo_root,
@@ -106,7 +122,7 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
 def observe_cueprobe(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
     payload, subject = _payload(repo_root, request)
     configured = os.environ.get("CUESTRAP_CUEPROBE")
-    binary = Path(configured).resolve() if configured else (repo_root / "runner" / "bin" / "cueprobe").resolve()
+    binary = _cueprobe_path(repo_root, configured, os.name)
     if not binary.is_file():
         return _unavailable(subject, "cueprobe", f"runner missing: {binary}")
     process = run_process(
@@ -184,7 +200,7 @@ def _native_observation(payload: dict[str, Any]) -> dict[str, Any]:
     identity = binding_identity(bindings)
     context = bindings.NewContext()
     loader = context.OpenLoader(module_root)
-    root = loader.LoadFiles(files)
+    root = loader.LoadFiles(_gopy_string_slice(bindings, files))
     facts: dict[str, Any] = {"available": True}
     diagnostics: list[dict[str, Any]] = []
     state = "evaluate"

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,11 +13,46 @@ sys.path.insert(0, str(WORKBOOK_ROOT))
 
 from models import DEFAULT_WORKBOOK_REQUEST, OBSERVATION_PROTOCOL, ProbeObservation, materialize_subject, parse_probe_request  # noqa: E402
 from native import CUE_MODULE_VERSION, CUE_REVISION, NativeBindingUnavailable, import_bindings  # noqa: E402
+import native_backend  # noqa: E402
 from native_backend import compare_native_backends, observe_cueprobe, observe_gopy_worker  # noqa: E402
 from native_validation import execute_native_probe  # noqa: E402
 
 
 class NativeHarnessTests(unittest.TestCase):
+    def test_gopy_file_lists_use_the_generated_slice_proxy(self) -> None:
+        sentinel = object()
+        constructor_calls: list[list[str]] = []
+
+        def slice_string(values: list[str]) -> object:
+            constructor_calls.append(values)
+            return sentinel
+
+        bindings = SimpleNamespace(go=SimpleNamespace(Slice_string=slice_string))
+        result = native_backend._gopy_string_slice(bindings, ["one.cue", "two.cue"])
+        self.assertIs(result, sentinel)
+        self.assertEqual(constructor_calls, [["one.cue", "two.cue"]])
+
+    def test_configured_gopy_package_parent_leads_pythonpath(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        worker = SimpleNamespace(state="exited", exit_code=2, stderr="expected", stdout="")
+        with tempfile.TemporaryDirectory() as temporary:
+            module_root = Path(temporary) / "generated" / "cue_native"
+            module_root.mkdir(parents=True)
+            with patch.dict(
+                "os.environ", {"CUESTRAP_GOPY_MODULE_DIR": str(module_root)}, clear=False
+            ), patch("native_backend.run_process", return_value=worker) as run_worker:
+                observe_gopy_worker(ROOT, request)
+
+        environment = run_worker.call_args.kwargs["env"]
+        self.assertEqual(
+            environment["PYTHONPATH"].split(native_backend.os.pathsep)[0],
+            str(module_root.parent),
+        )
+
+    def test_default_windows_cueprobe_has_exe_suffix(self) -> None:
+        binary = native_backend._cueprobe_path(ROOT, None, "nt")
+        self.assertEqual(binary.name, "cueprobe.exe")
+
     def test_missing_native_artifacts_are_typed_capability_gaps(self) -> None:
         request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
         with patch.dict("os.environ", {"CUESTRAP_GOPY_MODULE_DIR": str(ROOT / "missing-native")}, clear=False):

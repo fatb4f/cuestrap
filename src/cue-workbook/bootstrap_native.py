@@ -79,6 +79,26 @@ def install_tools(gopy_source: Path, tools: Path) -> Path:
     return binary
 
 
+def build_extension(gopy: Path, runner: Path, tools: Path, extension: Path) -> None:
+    staged_extension = runner / "bin" / extension.name
+    if staged_extension.exists():
+        shutil.rmtree(staged_extension)
+    environment = {"PATH": str(tools) + os.pathsep + os.environ.get("PATH", "")}
+    run(
+        str(gopy),
+        "build",
+        f"-vm={sys.executable}",
+        f"-name={extension.name}",
+        f"-output={staged_extension}",
+        BINDING_PACKAGE,
+        cwd=runner,
+        env=environment,
+    )
+    if extension.exists():
+        shutil.rmtree(extension)
+    shutil.move(staged_extension, extension)
+
+
 def main() -> int:
     workbook = Path(__file__).resolve().parent
     root = workbook.parents[1]
@@ -97,19 +117,7 @@ def main() -> int:
     run("go", "mod", "tidy", cwd=runner)
     gopy = install_tools(gopy_source, tools)
 
-    if extension.exists():
-        shutil.rmtree(extension)
-    environment = {"PATH": str(tools) + os.pathsep + os.environ.get("PATH", "")}
-    run(
-        str(gopy),
-        "build",
-        f"-vm={sys.executable}",
-        "-name=cue_native",
-        f"-output={extension}",
-        BINDING_PACKAGE,
-        cwd=runner,
-        env=environment,
-    )
+    build_extension(gopy, runner, tools, extension)
 
     cueprobe.parent.mkdir(parents=True, exist_ok=True)
     run("go", "build", "-o", str(cueprobe), "./cmd/cueprobe", cwd=runner)
