@@ -1,6 +1,15 @@
 # Schema reference:
 # https://learn.chatgpt.com/docs/config-schema.json
 
+[shell_environment_policy]
+inherit = "all"
+exclude = ["PYTHONHOME"]
+
+[shell_environment_policy.set]
+PATH = "/home/_404/src/cuestrap/.venv/bin:/home/_404/.local/bin:/home/_404/.local/share/path:/home/_404/.local/share/cargo/bin:/home/_404/.local/share/go/bin:/home/_404/.cache/.bun/bin:/home/_404/.local/share/npm/bin:/home/_404/.local/share/codex/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+VIRTUAL_ENV = "/home/_404/src/cuestrap/.venv"
+UV_PROJECT_ENVIRONMENT = "/home/_404/src/cuestrap/.venv"
+
 [mcp_servers.cue_lsp]
 command = "uv"
 args = [
@@ -25,6 +34,22 @@ supports_parallel_tool_calls = false
 [mcp_servers.cue_lsp.env]
 UV_PROJECT_ENVIRONMENT = ".venv"
 PYTHONUNBUFFERED = "1"
+
+[mcp_servers.git-mcp-server]
+command = "git-mcp-go"
+args = [
+  "serve",
+  "--mode",
+  "go-git",
+  "-r=.",
+  "--write-access",
+]
+cwd = "."
+enabled = true
+required = true
+startup_timeout_sec = 20
+tool_timeout_sec = 30
+supports_parallel_tool_calls = false
 
 [mcp_servers.gopls]
 command = "uv"

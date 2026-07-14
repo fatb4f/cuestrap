@@ -1,0 +1,4 @@
+interface:
+  display_name: "CUE Authoring"
+  short_description: "Author and validate robust CUE models"
+  default_prompt: "Use $cue to refactor this CUE model with total evaluators and concrete probes."
