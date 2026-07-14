@@ -45,6 +45,12 @@ def digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def artifact_set_digest(files: list[dict[str, str]]) -> str:
+    normalized = sorted(files, key=lambda item: item["relativePath"])
+    encoded = json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def require_pybindgen() -> None:
     if importlib.util.find_spec("pybindgen") is None:
         raise RuntimeError(
@@ -134,6 +140,8 @@ def main() -> int:
         raise RuntimeError(f"extension revision mismatch: {identity}")
     if identity.get("cue_module_version") != CUE_MODULE_VERSION:
         raise RuntimeError(f"extension module mismatch: {identity}")
+    if identity.get("observed_cue_module_version") != CUE_MODULE_VERSION:
+        raise RuntimeError(f"extension observed module mismatch: {identity}")
 
     native_files = [
         path
@@ -143,6 +151,10 @@ def main() -> int:
     if not native_files:
         raise RuntimeError("gopy produced no native extension")
 
+    extension_files = [
+        {"relativePath": path.relative_to(extension).as_posix(), "digest": digest(path)}
+        for path in native_files
+    ]
     manifest = {
         "cue": {
             "repository": CUE_REPOSITORY,
@@ -158,9 +170,13 @@ def main() -> int:
         "go": {"version": output("go", "version")},
         "extension": {
             "identity": identity,
-            "files": [{"path": str(path), "digest": digest(path)} for path in native_files],
+            "digest": artifact_set_digest(extension_files),
+            "files": extension_files,
         },
-        "cueprobe": {"path": str(cueprobe), "digest": digest(cueprobe)},
+        "cueprobe": {
+            "path": cueprobe.relative_to(root).as_posix(),
+            "digest": digest(cueprobe),
+        },
     }
     deps.mkdir(exist_ok=True)
     (deps / "manifest.json").write_text(

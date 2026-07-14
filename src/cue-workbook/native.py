@@ -1,6 +1,7 @@
 """Direct, exploratory access to the generated gopy CUE binding."""
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from typing import Any
 CUE_REVISION = "806821e40fae070318600a264d311517e596353b"
 CUE_MODULE_VERSION = "v0.18.0"
 GOPY_REVISION = "72557f647208599c726c14dc9721a6c850d2e6d9"
+NATIVE_SUFFIXES = frozenset({".so", ".dylib", ".dll", ".pyd"})
 
 
 class NativeBindingUnavailable(RuntimeError):
@@ -38,15 +40,121 @@ def binding_identity(bindings: ModuleType | None = None) -> dict[str, Any]:
         raise NativeBindingUnavailable(f"unexpected CUE revision: {value}")
     if value.get("cue_module_version") != CUE_MODULE_VERSION:
         raise NativeBindingUnavailable(f"unexpected CUE module target: {value}")
+    if value.get("observed_cue_module_version") != CUE_MODULE_VERSION:
+        raise NativeBindingUnavailable(f"unexpected compiled CUE module: {value}")
     return value
 
 
-def build_manifest(root: Path | None = None) -> dict[str, Any] | None:
+def _digest_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _digest_file(path: Path) -> str:
+    if not path.is_file():
+        raise NativeBindingUnavailable(f"native artifact is missing: {path}")
+    return _digest_bytes(path.read_bytes())
+
+
+def _artifact_set_digest(files: list[dict[str, str]]) -> str:
+    normalized = sorted(files, key=lambda item: item["relativePath"])
+    encoded = json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()
+    return _digest_bytes(encoded)
+
+
+def _manifest_path(root: Path | None = None) -> Path:
     root = root or Path(__file__).resolve().parents[2]
-    path = root / ".deps" / "manifest.json"
+    return root / ".deps" / "manifest.json"
+
+
+def build_manifest(root: Path | None = None) -> dict[str, Any] | None:
+    path = _manifest_path(root)
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise NativeBindingUnavailable(f"invalid native build manifest: {error}") from error
+    if not isinstance(value, dict):
+        raise NativeBindingUnavailable("native build manifest is not an object")
+    cue = value.get("cue")
+    if not isinstance(cue, dict):
+        raise NativeBindingUnavailable("native build manifest has no CUE identity")
+    if cue.get("revision") != CUE_REVISION or cue.get("moduleVersion") != CUE_MODULE_VERSION:
+        raise NativeBindingUnavailable(f"native build manifest CUE identity mismatch: {cue}")
+    return value
+
+
+def build_manifest_digest(root: Path | None = None) -> str:
+    manifest = build_manifest(root)
+    if manifest is None:
+        raise NativeBindingUnavailable("native build manifest is missing")
+    return _digest_file(_manifest_path(root))
+
+
+def verify_extension_artifact(root: Path, extension: Path) -> dict[str, Any]:
+    manifest = build_manifest(root)
+    if manifest is None:
+        raise NativeBindingUnavailable("native build manifest is missing")
+    section = manifest.get("extension")
+    if not isinstance(section, dict) or not isinstance(section.get("files"), list):
+        raise NativeBindingUnavailable("native build manifest has no extension artifacts")
+
+    expected: dict[str, str] = {}
+    for item in section["files"]:
+        if not isinstance(item, dict) or not isinstance(item.get("digest"), str):
+            raise NativeBindingUnavailable("native build manifest has an invalid extension artifact")
+        relative = item.get("relativePath")
+        if not isinstance(relative, str):
+            legacy = item.get("path")
+            if not isinstance(legacy, str):
+                raise NativeBindingUnavailable("native build manifest extension path is missing")
+            try:
+                relative = Path(legacy).resolve().relative_to(extension.resolve()).as_posix()
+            except ValueError as error:
+                raise NativeBindingUnavailable("native build manifest extension path is inconsistent") from error
+        expected[relative] = item["digest"]
+
+    actual_paths = sorted(
+        path for path in extension.rglob("*") if path.is_file() and path.suffix in NATIVE_SUFFIXES
+    )
+    actual = {
+        path.relative_to(extension).as_posix(): _digest_file(path)
+        for path in actual_paths
+    }
+    if not actual or actual != expected:
+        raise NativeBindingUnavailable(
+            f"generated extension does not match build manifest: expected {expected}, observed {actual}"
+        )
+    records = [
+        {"relativePath": relative, "digest": digest}
+        for relative, digest in actual.items()
+    ]
+    artifact_digest = _artifact_set_digest(records)
+    declared_digest = section.get("digest", artifact_digest)
+    if declared_digest != artifact_digest:
+        raise NativeBindingUnavailable("generated extension aggregate digest does not match build manifest")
+    return {
+        "buildManifestDigest": build_manifest_digest(root),
+        "artifactDigest": artifact_digest,
+        "artifactManifestVerified": True,
+    }
+
+
+def verify_cueprobe_artifact(root: Path, binary: Path) -> dict[str, Any]:
+    manifest = build_manifest(root)
+    if manifest is None:
+        raise NativeBindingUnavailable("native build manifest is missing")
+    section = manifest.get("cueprobe")
+    if not isinstance(section, dict) or not isinstance(section.get("digest"), str):
+        raise NativeBindingUnavailable("native build manifest has no cueprobe artifact")
+    artifact_digest = _digest_file(binary)
+    if artifact_digest != section["digest"]:
+        raise NativeBindingUnavailable("cueprobe digest does not match build manifest")
+    return {
+        "buildManifestDigest": build_manifest_digest(root),
+        "artifactDigest": artifact_digest,
+        "artifactManifestVerified": True,
+    }
 
 
 @dataclass

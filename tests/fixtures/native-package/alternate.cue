@@ -1,0 +1,3 @@
+package alternate
+
+value: "alternate"

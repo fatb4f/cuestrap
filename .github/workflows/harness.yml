@@ -65,3 +65,72 @@ jobs:
             /tmp/cuestrap-probe.json
             /tmp/cuestrap-probe.stderr
           if-no-files-found: warn
+
+  native-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: runner/go.mod
+          cache: false
+
+      - name: Synchronize the committed uv project
+        run: uv sync --locked
+
+      - name: Build pinned native artifacts
+        run: |
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/bootstrap_native.py
+
+      - name: Run Go native tests
+        working-directory: runner
+        run: go test ./...
+
+      - name: Run Python native integration tests
+        run: |
+          uv run --project . --locked --exact -- \
+            python -m unittest -v tests.test_native_harness
+
+      - name: Qualify browserless native probe
+        run: |
+          set +e
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/workbook_cli.py \
+              --probe-request tests/fixtures/pilot-request.json \
+              >/tmp/cuestrap-native-probe.json \
+              2>/tmp/cuestrap-native-probe.stderr
+          status=$?
+          set -e
+          cat /tmp/cuestrap-native-probe.json
+          cat /tmp/cuestrap-native-probe.stderr >&2
+          test "$status" -eq 0
+          uv run --project . --locked --exact -- python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/cuestrap-native-probe.json").read_text())
+          for backend in ("gopyWorker", "cueprobe"):
+              assert result[backend]["facts"].get("available") is True, result[backend]
+          comparison = result["nativeComparison"]
+          assert comparison["state"] not in {
+              "capability-gap",
+              "incomparable",
+              "engine-identity-mismatch",
+          }, comparison
+          assert comparison["equivalentEngines"] is True, comparison
+          PY
+
+      - name: Upload native qualification diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuestrap-native-qualification-diagnostics
+          path: |
+            /tmp/cuestrap-native-probe.json
+            /tmp/cuestrap-native-probe.stderr
+          if-no-files-found: warn

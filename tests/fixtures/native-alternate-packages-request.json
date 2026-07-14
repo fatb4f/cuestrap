@@ -1,0 +1,18 @@
+{
+  "schema": "cuestrap.probe-request.v0",
+  "probeID": "native.package-alternate",
+  "moduleRoot": "tests/fixtures/native-package",
+  "package": "selected",
+  "files": [
+    {
+      "path": "selected.cue"
+    },
+    {
+      "path": "alternate.cue"
+    }
+  ],
+  "operation": "evaluate",
+  "subjectExpression": "value",
+  "candidateExpression": null,
+  "concreteInput": null
+}

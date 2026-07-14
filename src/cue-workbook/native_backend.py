@@ -19,13 +19,21 @@ from models import (
     ProbeRequest,
     SemanticSubject,
     _digest_bytes,
-    _digest_file,
     _json_bytes,
     _reject_claimant_fields,
     materialize_subject,
     parse_probe_request,
 )
-from native import CUE_MODULE_VERSION, CUE_REVISION, GOPY_REVISION, binding_identity, import_bindings
+from native import (
+    CUE_MODULE_VERSION,
+    CUE_REVISION,
+    GOPY_REVISION,
+    NativeBindingUnavailable,
+    binding_identity,
+    import_bindings,
+    verify_cueprobe_artifact,
+    verify_extension_artifact,
+)
 from runtime import run_process
 
 
@@ -114,9 +122,14 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
         return observation
     observation = _parse_worker_output(worker.stdout, subject)
     observation.commands.append(worker)
-    manifest = repo_root / ".deps" / "manifest.json"
-    if manifest.is_file():
-        observation.extensions["buildManifestDigest"] = _digest_file(manifest)
+    try:
+        artifact_identity = verify_extension_artifact(repo_root, module_root)
+        observation.extensions.update(artifact_identity)
+        observation.extensions["extensionDigest"] = artifact_identity["artifactDigest"]
+    except NativeBindingUnavailable as error:
+        observation.state = "identity-error"
+        observation.extensions["artifactManifestVerified"] = False
+        observation.diagnostics.append({"code": "native-artifact-identity", "message": str(error)})
     return observation
 
 
@@ -141,15 +154,56 @@ def observe_cueprobe(repo_root: Path, request: ProbeRequest) -> ProbeObservation
         return observation
     observation = _parse_worker_output(process.stdout, subject)
     observation.commands.append(process)
-    observation.extensions["binaryDigest"] = _digest_file(binary)
+    try:
+        artifact_identity = verify_cueprobe_artifact(repo_root, binary)
+        observation.extensions.update(artifact_identity)
+        observation.extensions["binaryDigest"] = artifact_identity["artifactDigest"]
+    except NativeBindingUnavailable as error:
+        observation.state = "identity-error"
+        observation.extensions["artifactManifestVerified"] = False
+        observation.diagnostics.append({"code": "native-artifact-identity", "message": str(error)})
     return observation
+
+
+def _engine_identity(observation: ProbeObservation) -> dict[str, Any]:
+    return {
+        "cueRevision": observation.extensions.get("cueRevision"),
+        "cueModuleVersion": observation.extensions.get("cueModuleVersion"),
+        "observedCUEModuleVersion": observation.extensions.get("observedCUEModuleVersion"),
+        "buildManifestDigest": observation.extensions.get("buildManifestDigest"),
+        "artifactDigest": observation.extensions.get("artifactDigest"),
+        "artifactManifestVerified": observation.extensions.get("artifactManifestVerified") is True,
+    }
+
+
+def _admissible_engine(identity: dict[str, Any]) -> bool:
+    def sha256_digest(value: object) -> bool:
+        if not isinstance(value, str) or not value.startswith("sha256:") or len(value) != 71:
+            return False
+        return all(character in "0123456789abcdef" for character in value.removeprefix("sha256:"))
+
+    return (
+        identity["cueRevision"] == CUE_REVISION
+        and identity["cueModuleVersion"] == CUE_MODULE_VERSION
+        and identity["observedCUEModuleVersion"] == CUE_MODULE_VERSION
+        and sha256_digest(identity["buildManifestDigest"])
+        and sha256_digest(identity["artifactDigest"])
+        and identity["artifactManifestVerified"] is True
+    )
 
 
 def compare_native_backends(gopy: ProbeObservation, cueprobe: ProbeObservation) -> dict[str, Any]:
     equivalent_subjects = gopy.subject_digest == cueprobe.subject_digest
-    left_engine = (gopy.extensions.get("cueRevision"), gopy.extensions.get("cueModuleVersion"))
-    right_engine = (cueprobe.extensions.get("cueRevision"), cueprobe.extensions.get("cueModuleVersion"))
-    equivalent_engines = left_engine == right_engine == (CUE_REVISION, CUE_MODULE_VERSION)
+    left_engine = _engine_identity(gopy)
+    right_engine = _engine_identity(cueprobe)
+    equivalent_engines = (
+        _admissible_engine(left_engine)
+        and _admissible_engine(right_engine)
+        and left_engine["cueRevision"] == right_engine["cueRevision"]
+        and left_engine["cueModuleVersion"] == right_engine["cueModuleVersion"]
+        and left_engine["observedCUEModuleVersion"] == right_engine["observedCUEModuleVersion"]
+        and left_engine["buildManifestDigest"] == right_engine["buildManifestDigest"]
+    )
     shared = set(gopy.facts).intersection(cueprobe.facts).difference({"available"})
     comparisons = {
         key: {
@@ -179,7 +233,7 @@ def compare_native_backends(gopy: ProbeObservation, cueprobe: ProbeObservation) 
         "equivalentSubjects": equivalent_subjects,
         "equivalentEngines": equivalent_engines,
         "subjectDigest": gopy.subject_digest if equivalent_subjects else None,
-        "engine": {"cueRevision": CUE_REVISION, "cueModuleVersion": CUE_MODULE_VERSION},
+        "engine": {"gopyWorker": left_engine, "cueprobe": right_engine},
         "comparisons": comparisons,
     }
 
@@ -201,7 +255,7 @@ def _native_observation(payload: dict[str, Any]) -> dict[str, Any]:
     identity = binding_identity(bindings)
     context = bindings.NewContext()
     loader = context.OpenLoader(module_root)
-    root = loader.LoadFiles(_gopy_string_slice(bindings, files))
+    root = loader.LoadFiles(_gopy_string_slice(bindings, files), request.package)
     facts: dict[str, Any] = {"available": True}
     diagnostics: list[dict[str, Any]] = []
     state = "evaluate"

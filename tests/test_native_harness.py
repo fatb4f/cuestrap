@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -13,7 +14,15 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 from models import DEFAULT_WORKBOOK_REQUEST, OBSERVATION_PROTOCOL, ProbeObservation, materialize_subject, parse_probe_request  # noqa: E402
-from native import CUE_MODULE_VERSION, CUE_REVISION, NativeBindingUnavailable, import_bindings  # noqa: E402
+from native import (  # noqa: E402
+    CUE_MODULE_VERSION,
+    CUE_REVISION,
+    NativeBindingUnavailable,
+    binding_identity,
+    import_bindings,
+    verify_cueprobe_artifact,
+    verify_extension_artifact,
+)
 import native_backend  # noqa: E402
 from native_backend import compare_native_backends, observe_cueprobe, observe_gopy_worker  # noqa: E402
 from native_validation import execute_native_probe  # noqa: E402
@@ -118,6 +127,10 @@ class NativeHarnessTests(unittest.TestCase):
                     "extensions": {
                         "cueRevision": revision,
                         "cueModuleVersion": CUE_MODULE_VERSION,
+                        "observedCUEModuleVersion": CUE_MODULE_VERSION,
+                        "buildManifestDigest": "sha256:" + "1" * 64,
+                        "artifactDigest": "sha256:" + "2" * 64,
+                        "artifactManifestVerified": True,
                     },
                 }
             )
@@ -129,10 +142,171 @@ class NativeHarnessTests(unittest.TestCase):
         self.assertEqual(result["state"], "engine-identity-mismatch")
         self.assertFalse(result["equivalentEngines"])
 
+    def test_native_comparison_rejects_absent_observed_identity(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+        extensions = {
+            "cueRevision": CUE_REVISION,
+            "cueModuleVersion": CUE_MODULE_VERSION,
+            "buildManifestDigest": "sha256:" + "1" * 64,
+            "artifactDigest": "sha256:" + "2" * 64,
+            "artifactManifestVerified": True,
+        }
+        observations = [
+            ProbeObservation.model_validate(
+                {
+                    "schema": OBSERVATION_PROTOCOL,
+                    "probeID": request.probe_id,
+                    "backend": backend,
+                    "subjectDigest": subject.digest,
+                    "subjectIdentity": subject.model_dump(by_alias=True),
+                    "state": "project",
+                    "facts": {"available": True, "semanticBottom": False},
+                    "extensions": extensions,
+                }
+            )
+            for backend in ("gopy-worker", "cueprobe")
+        ]
+
+        result = compare_native_backends(*observations)
+
+        self.assertEqual(result["state"], "engine-identity-mismatch")
+        self.assertFalse(result["equivalentEngines"])
+
+    def test_native_comparison_requires_one_verified_build_manifest(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+
+        def observation(backend: str, manifest: str, verified: bool = True) -> ProbeObservation:
+            return ProbeObservation.model_validate(
+                {
+                    "schema": OBSERVATION_PROTOCOL,
+                    "probeID": request.probe_id,
+                    "backend": backend,
+                    "subjectDigest": subject.digest,
+                    "subjectIdentity": subject.model_dump(by_alias=True),
+                    "state": "project",
+                    "facts": {"available": True, "semanticBottom": False},
+                    "extensions": {
+                        "cueRevision": CUE_REVISION,
+                        "cueModuleVersion": CUE_MODULE_VERSION,
+                        "observedCUEModuleVersion": CUE_MODULE_VERSION,
+                        "buildManifestDigest": manifest,
+                        "artifactDigest": "sha256:" + "2" * 64,
+                        "artifactManifestVerified": verified,
+                    },
+                }
+            )
+
+        mismatched = compare_native_backends(
+            observation("gopy-worker", "sha256:" + "1" * 64),
+            observation("cueprobe", "sha256:" + "3" * 64),
+        )
+        unverified = compare_native_backends(
+            observation("gopy-worker", "sha256:" + "1" * 64),
+            observation("cueprobe", "sha256:" + "1" * 64, verified=False),
+        )
+
+        for result in (mismatched, unverified):
+            self.assertEqual(result["state"], "engine-identity-mismatch")
+            self.assertFalse(result["equivalentEngines"])
+
+    def test_binding_identity_rejects_observed_module_mismatch(self) -> None:
+        bindings = SimpleNamespace(
+            IdentityJSON=lambda: json.dumps(
+                {
+                    "cue_revision": CUE_REVISION,
+                    "cue_module_version": CUE_MODULE_VERSION,
+                    "observed_cue_module_version": "v0.17.0",
+                }
+            )
+        )
+
+        with self.assertRaisesRegex(NativeBindingUnavailable, "compiled CUE module"):
+            binding_identity(bindings)
+
+    def test_artifacts_must_match_the_build_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            extension = root / "extension"
+            artifact = extension / "binding.so"
+            binary = root / "cueprobe"
+            manifest_path = root / ".deps" / "manifest.json"
+            extension.mkdir()
+            manifest_path.parent.mkdir()
+            artifact.write_bytes(b"extension")
+            binary.write_bytes(b"cueprobe")
+            extension_digest = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+            binary_digest = "sha256:" + hashlib.sha256(binary.read_bytes()).hexdigest()
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "cue": {
+                            "revision": CUE_REVISION,
+                            "moduleVersion": CUE_MODULE_VERSION,
+                        },
+                        "extension": {
+                            "files": [
+                                {
+                                    "relativePath": artifact.name,
+                                    "digest": extension_digest,
+                                }
+                            ]
+                        },
+                        "cueprobe": {"digest": binary_digest},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(verify_extension_artifact(root, extension)["artifactManifestVerified"])
+            self.assertTrue(verify_cueprobe_artifact(root, binary)["artifactManifestVerified"])
+            artifact.write_bytes(b"stale")
+            with self.assertRaisesRegex(NativeBindingUnavailable, "does not match"):
+                verify_extension_artifact(root, extension)
+            binary.write_bytes(b"stale")
+            with self.assertRaisesRegex(NativeBindingUnavailable, "does not match"):
+                verify_cueprobe_artifact(root, binary)
+
     def test_direct_import_fails_closed_when_extension_is_absent(self) -> None:
         with patch("native.importlib.import_module", side_effect=ImportError("missing")):
             with self.assertRaises(NativeBindingUnavailable):
                 import_bindings()
+
+    def test_package_selector_matches_live_native_backends(self) -> None:
+        configured = native_backend.os.environ.get("CUESTRAP_GOPY_MODULE_DIR")
+        extension = (
+            Path(configured).resolve()
+            if configured
+            else ROOT / "src" / "cue-workbook" / "cue_native"
+        )
+        cueprobe_binary = native_backend._cueprobe_path(
+            ROOT,
+            native_backend.os.environ.get("CUESTRAP_CUEPROBE"),
+            native_backend.os.name,
+        )
+        native_files = [
+            path
+            for path in extension.glob("*")
+            if path.suffix in {".so", ".dylib", ".dll", ".pyd"}
+        ]
+        if not native_files or not cueprobe_binary.is_file():
+            self.skipTest("native artifacts have not been bootstrapped")
+
+        request_data = json.loads(
+            (ROOT / "tests/fixtures/native-alternate-packages-request.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        request = parse_probe_request(request_data)
+        gopy = observe_gopy_worker(ROOT, request)
+        cueprobe = observe_cueprobe(ROOT, request)
+
+        self.assertEqual(gopy.state, "load-error", gopy.diagnostics)
+        self.assertEqual(cueprobe.state, "load-error", cueprobe.diagnostics)
+        self.assertTrue(gopy.diagnostics)
+        self.assertTrue(cueprobe.diagnostics)
+        self.assertTrue(compare_native_backends(gopy, cueprobe)["equivalentEngines"])
 
     def test_admitted_workbook_surface_excludes_cue_py(self) -> None:
         with patch("native_validation.observe_cli") as cli, patch(

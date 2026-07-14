@@ -118,22 +118,26 @@ func (l *Loader) LoadPackage(pattern string) (*Value, error) {
 	if pattern == "" {
 		pattern = "."
 	}
-	return l.load([]string{pattern})
+	return l.load([]string{pattern}, "")
 }
 
-func (l *Loader) LoadFiles(paths []string) (*Value, error) {
+func (l *Loader) LoadFiles(paths []string, packageName string) (*Value, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("at least one file path is required")
 	}
-	return l.load(paths)
+	return l.load(paths, packageName)
 }
 
-func (l *Loader) load(args []string) (*Value, error) {
-	instances := load.Instances(args, &load.Config{Dir: l.Root})
+func (l *Loader) load(args []string, packageName string) (*Value, error) {
+	instances := load.Instances(args, l.loadConfig(packageName))
 	if len(instances) != 1 {
 		return nil, fmt.Errorf("expected exactly one CUE instance, got %d", len(instances))
 	}
 	return &Value{native: l.context.native.BuildInstance(instances[0]), owner: l.context}, nil
+}
+
+func (l *Loader) loadConfig(packageName string) *load.Config {
+	return &load.Config{Dir: l.Root, Package: packageName}
 }
 
 type Value struct {

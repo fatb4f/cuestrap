@@ -1,5 +1,10 @@
-# Thin runner bootstrap surface
+# Native runner surface
 
-This directory is reserved for a thin Go runner when the workbook-native cue-py/libcue backend or CUE CLI reference backend cannot provide the required isolation, diagnostic fidelity, or semantic operation.
+`bindings/` exposes the narrow gopy facade used by the isolated Python worker.
+`cmd/cueprobe/` is an independent process backend. Both compile against the exact
+CUE checkout selected by `src/cue-workbook/bootstrap_native.py`.
 
-The runner must consume a closed probe request and emit raw facts, diagnostics, identities, and process states. It must not own expected outcomes or admission verdicts, and it must be invoked through the Marimo workbook.
+The backends consume the same closed probe request, including its package
+selector, and emit raw facts, diagnostics, identities, and process states. They
+do not own expected outcomes or admission verdicts; the workbook compares their
+digest-bound observations.

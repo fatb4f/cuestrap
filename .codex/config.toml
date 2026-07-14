@@ -5,11 +5,6 @@
 inherit = "all"
 exclude = ["PYTHONHOME"]
 
-[shell_environment_policy.set]
-PATH = "/home/_404/src/cuestrap/.venv/bin:/home/_404/.local/bin:/home/_404/.local/share/path:/home/_404/.local/share/cargo/bin:/home/_404/.local/share/go/bin:/home/_404/.cache/.bun/bin:/home/_404/.local/share/npm/bin:/home/_404/.local/share/codex/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-VIRTUAL_ENV = "/home/_404/src/cuestrap/.venv"
-UV_PROJECT_ENVIRONMENT = "/home/_404/src/cuestrap/.venv"
-
 [mcp_servers.cue_lsp]
 command = "uv"
 args = [
