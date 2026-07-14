@@ -1,0 +1,18 @@
+{
+  "session_id": "session-1",
+  "transcript_path": null,
+  "cwd": "/repository",
+  "hook_event_name": "PostToolUse",
+  "model": "gpt-test",
+  "turn_id": "turn-1",
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_use_id": "tool-1",
+  "tool_input": {
+    "command": "rg hook src"
+  },
+  "tool_response": {
+    "exit_code": 0,
+    "output": "bounded output"
+  }
+}
