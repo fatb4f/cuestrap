@@ -7,7 +7,15 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from harness import DEFAULT_WORKBOOK_REQUEST, HarnessError, _cue_py_worker, _reject_claimant_fields
+from harness import (
+    DEFAULT_WORKBOOK_REQUEST,
+    DirectSession,
+    HarnessError,
+    NativeBindingUnavailable,
+    _reject_claimant_fields,
+    gopy_worker_main,
+    summarize_value,
+)
 from lsp_mcp import McpServer
 
 
@@ -25,9 +33,25 @@ def create_app():
 
         import marimo as mo
 
-        from harness import DEFAULT_WORKBOOK_REQUEST, execute_probe, run_architecture_validation
+        from harness import (
+            DEFAULT_WORKBOOK_REQUEST,
+            DirectSession,
+            NativeBindingUnavailable,
+            execute_native_probe,
+            run_architecture_validation,
+            summarize_value,
+        )
 
-        return DEFAULT_WORKBOOK_REQUEST, Path, execute_probe, mo, run_architecture_validation
+        return (
+            DEFAULT_WORKBOOK_REQUEST,
+            DirectSession,
+            NativeBindingUnavailable,
+            Path,
+            execute_native_probe,
+            mo,
+            run_architecture_validation,
+            summarize_value,
+        )
 
     @app.cell
     def _(DEFAULT_WORKBOOK_REQUEST, Path):
@@ -39,15 +63,27 @@ def create_app():
     @app.cell
     def _(mo):
         run_environment = mo.ui.run_button(label="Validate locked environment")
-        run_probe = mo.ui.run_button(label="Run registered probe")
+        run_probe = mo.ui.run_button(label="Run qualified native probe")
+        direct_source = mo.ui.text_area(
+            label="Interactive CUE source",
+            value="x: int & >=0\nx: 2",
+            rows=5,
+        )
+        run_direct = mo.ui.run_button(label="Compile live native value")
         mo.vstack(
             [
                 mo.md("# CUE bootstrap workbook"),
-                mo.md("One pattern, one kernel projection, one probe, and controlled backend observations."),
+                mo.md(
+                    "Qualified mode compares an isolated gopy worker with the independent "
+                    "`cueprobe` process. Direct mode retains live Go-backed values and is exploratory only."
+                ),
                 mo.hstack([run_environment, run_probe]),
+                mo.md("## Interactive native surface"),
+                direct_source,
+                run_direct,
             ]
         )
-        return run_environment, run_probe
+        return direct_source, run_direct, run_environment, run_probe
 
     @app.cell
     def _(Path, execution_mode, repo_root, run_architecture_validation, run_environment):
@@ -58,10 +94,10 @@ def create_app():
         return (environment_result,)
 
     @app.cell
-    def _(Path, execute_probe, execution_mode, repo_root, run_probe, workbook_request):
+    def _(Path, execute_native_probe, execution_mode, repo_root, run_probe, workbook_request):
         if run_probe.value or execution_mode == "probe":
             try:
-                probe_result = execute_probe(Path(repo_root), workbook_request)
+                probe_result = execute_native_probe(Path(repo_root), workbook_request)
             except Exception as error:
                 probe_result = {"status": "error", "error": f"{type(error).__name__}: {error}"}
         else:
@@ -69,7 +105,33 @@ def create_app():
         return (probe_result,)
 
     @app.cell
-    def _(environment_result, execution_mode, mo, probe_result, workbook_request):
+    def _(
+        DirectSession,
+        NativeBindingUnavailable,
+        direct_source,
+        run_direct,
+        summarize_value,
+    ):
+        direct_result = {"status": "pending"}
+        direct_value = None
+        if run_direct.value:
+            try:
+                direct_session = DirectSession.open()
+                direct_value = direct_session.compile(direct_source.value, "interactive.cue")
+                direct_result = {
+                    "status": "exploratory",
+                    "identity": direct_session.identity,
+                    "summary": summarize_value(direct_value),
+                    "proxyType": type(direct_value).__name__,
+                }
+            except NativeBindingUnavailable as error:
+                direct_result = {"status": "unavailable", "error": str(error)}
+            except Exception as error:
+                direct_result = {"status": "error", "error": f"{type(error).__name__}: {error}"}
+        return direct_result, direct_value
+
+    @app.cell
+    def _(direct_result, environment_result, execution_mode, mo, probe_result, workbook_request):
         mo.vstack(
             [
                 mo.md(f"**Execution mode:** `{execution_mode}`"),
@@ -77,8 +139,10 @@ def create_app():
                 mo.json(workbook_request),
                 mo.md("## Environment"),
                 mo.json(environment_result),
-                mo.md("## Probe observations"),
+                mo.md("## Qualified observations"),
                 mo.json(probe_result),
+                mo.md("## Direct exploratory observation"),
+                mo.json(direct_result),
             ]
         )
         return
@@ -112,12 +176,12 @@ def _main() -> int:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--probe-request", type=Path)
-    parser.add_argument("--cue-py-worker", action="store_true")
+    parser.add_argument("--gopy-worker", action="store_true")
     parser.add_argument("--serve-mcp", choices=("cue-lsp", "gopls"))
     args, marimo_args = parser.parse_known_args()
 
-    if args.cue_py_worker:
-        return _cue_py_worker()
+    if args.gopy_worker:
+        return gopy_worker_main()
     root = args.repo_root.resolve(strict=True)
     if args.serve_mcp:
         return McpServer(args.serve_mcp, root).serve()
