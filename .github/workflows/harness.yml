@@ -45,7 +45,7 @@ jobs:
         run: |
           set +e
           uv run --project . --locked --exact -- \
-            python src/cue-workbook/cue-workbook.py \
+            python src/cue-workbook/workbook_cli.py \
               --probe-request tests/fixtures/pilot-request.json \
               >/tmp/cuestrap-probe.json \
               2>/tmp/cuestrap-probe.stderr

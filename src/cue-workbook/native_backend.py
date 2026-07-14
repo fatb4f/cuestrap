@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from models import (
     OBSERVATION_PROTOCOL,
+    WORKBOOK_CLI_PATH,
     WORKBOOK_PATH,
     HarnessError,
     HarnessFailure,
@@ -98,7 +99,7 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
         pythonpath.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(pythonpath)
     worker = run_process(
-        (sys.executable, str((repo_root / WORKBOOK_PATH).resolve()), "--gopy-worker"),
+        (sys.executable, str((repo_root / WORKBOOK_CLI_PATH).resolve()), "--gopy-worker"),
         cwd=repo_root,
         env=environment,
         input_bytes=_json_bytes(payload),

@@ -11,6 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 WORKBOOK_PATH = Path("src/cue-workbook/cue-workbook.py")
+WORKBOOK_CLI_PATH = Path("src/cue-workbook/workbook_cli.py")
 PROBE_PROTOCOL = "cuestrap.probe-request.v0"
 OBSERVATION_PROTOCOL = "cuestrap.probe-observation.v0"
 SUBJECT_IDENTITY_PROTOCOL = "cuestrap.subject-identity.v0"

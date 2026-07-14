@@ -7,7 +7,8 @@ This repository is a temporary single-pattern bootstrap laboratory. Its purpose 
 - Use the repository-root `pyproject.toml`, `uv.lock`, `.venv`, and `.envrc`.
 - Run Python through `uv run --project . --locked --exact` or the activated direnv environment.
 - Do not create another virtual environment, `requirements.txt`, PEP 723 dependency block, or ad-hoc validator script.
-- `src/cue-workbook/cue-workbook.py` is the reusable harness and iteration record.
+- `src/cue-workbook/cue-workbook.py` is the canonical iteration record;
+  `src/cue-workbook/workbook_cli.py` is its browserless command surface.
 - Use the configured `cue_lsp` MCP tools for CUE source work and `gopls` MCP tools for Go binding/runner work.
 
 ## Native engine identity

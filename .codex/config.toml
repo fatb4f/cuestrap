@@ -19,7 +19,7 @@ args = [
   "--exact",
   "--",
   "python",
-  "src/cue-workbook/cue-workbook.py",
+  "src/cue-workbook/workbook_cli.py",
   "--serve-mcp",
   "cue-lsp",
 ]
@@ -51,6 +51,13 @@ startup_timeout_sec = 20
 tool_timeout_sec = 30
 supports_parallel_tool_calls = false
 
+[mcp_servers.marimo_code_mode]
+url = "http://127.0.0.1:2718/mcp/server"
+enabled = true
+required = false
+tool_timeout_sec = 60
+supports_parallel_tool_calls = false
+
 [mcp_servers.gopls]
 command = "uv"
 args = [
@@ -60,7 +67,7 @@ args = [
   "--exact",
   "--",
   "python",
-  "src/cue-workbook/cue-workbook.py",
+  "src/cue-workbook/workbook_cli.py",
   "--serve-mcp",
   "gopls",
 ]

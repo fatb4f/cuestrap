@@ -33,17 +33,18 @@ The workbook is the durable experiment definition and iteration record. Git hist
 
 ## Reusable harness
 
-Use `src/cue-workbook/cue-workbook.py` instead of generating validation scripts.
+Use the canonical notebook at `src/cue-workbook/cue-workbook.py` and its browserless
+launcher at `src/cue-workbook/workbook_cli.py` instead of generating validation scripts.
 
 ```bash
 uv run --project . --locked --exact -- \
-  python src/cue-workbook/cue-workbook.py --validate
+  python src/cue-workbook/workbook_cli.py --validate
 
 uv run --project . --locked --exact -- \
   marimo edit src/cue-workbook/cue-workbook.py
 
 uv run --project . --locked --exact -- \
-  python src/cue-workbook/cue-workbook.py \
+  python src/cue-workbook/workbook_cli.py \
     --probe-request path/to/request.json
 ```
 

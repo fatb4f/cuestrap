@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from models import (
     OBSERVATION_PROTOCOL,
     PROBE_PROTOCOL,
+    WORKBOOK_CLI_PATH,
     WORKBOOK_PATH,
     HarnessError,
     HarnessFailure,
@@ -315,7 +316,7 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
     payload, subject = _cue_py_payload(repo_root, request)
     environment, library = coordinates
     worker = run_process(
-        (sys.executable, str((repo_root / WORKBOOK_PATH).resolve()), "--cue-py-worker"),
+        (sys.executable, str((repo_root / WORKBOOK_CLI_PATH).resolve()), "--cue-py-worker"),
         cwd=repo_root,
         env=environment,
         input_bytes=_json_bytes(payload),

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CUEstrap Code Mode"
+  short_description: "Operate the live CUEstrap controller safely"
+  default_prompt: "Use $cuestrap-code-mode to inspect or transact against the bound live controller workbook."

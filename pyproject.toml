@@ -5,7 +5,7 @@ requires-python = ">=3.14"
 dependencies = [
     "cffi>=1.16,<3",
     "hypothesis>=6,<7",
-    "marimo>=0.19,<1",
+    "marimo[mcp]>=0.19,<1",
     "pybindgen>=0.22,<0.23",
     "pydantic>=2,<3",
 ]
