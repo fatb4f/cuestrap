@@ -24,7 +24,12 @@ class BootstrapNativeTests(unittest.TestCase):
             tools.mkdir()
             extension.parent.mkdir()
 
+            calls: list[tuple[tuple[str, ...], object]] = []
+
             def generate(*args: str, **kwargs: object) -> None:
+                calls.append((args, kwargs.get("cwd")))
+                if args == ("go", "mod", "tidy"):
+                    return
                 output = next(item.removeprefix("-output=") for item in args if item.startswith("-output="))
                 generated = Path(output)
                 self.assertTrue(generated.is_relative_to(runner))
@@ -36,6 +41,7 @@ class BootstrapNativeTests(unittest.TestCase):
 
             self.assertTrue((extension / "bindings.py").is_file())
             self.assertFalse((runner / "bin" / "cue_native").exists())
+            self.assertEqual(calls[-1], (("go", "mod", "tidy"), runner))
 
 
 if __name__ == "__main__":

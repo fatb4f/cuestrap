@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -52,6 +53,39 @@ class NativeHarnessTests(unittest.TestCase):
     def test_default_windows_cueprobe_has_exe_suffix(self) -> None:
         binary = native_backend._cueprobe_path(ROOT, None, "nt")
         self.assertEqual(binary.name, "cueprobe.exe")
+
+    def test_large_integer_projection_matches_live_native_backends(self) -> None:
+        configured = native_backend.os.environ.get("CUESTRAP_GOPY_MODULE_DIR")
+        extension = (
+            Path(configured).resolve()
+            if configured
+            else ROOT / "src" / "cue-workbook" / "cue_native"
+        )
+        cueprobe_binary = native_backend._cueprobe_path(
+            ROOT,
+            native_backend.os.environ.get("CUESTRAP_CUEPROBE"),
+            native_backend.os.name,
+        )
+        native_files = [
+            path
+            for path in extension.glob("*")
+            if path.suffix in {".so", ".dylib", ".dll", ".pyd"}
+        ]
+        if not native_files or not cueprobe_binary.is_file():
+            self.skipTest("native artifacts have not been bootstrapped")
+
+        number = 9_007_199_254_740_993
+        request_data = {**DEFAULT_WORKBOOK_REQUEST, "concreteInput": number}
+        request = parse_probe_request(request_data)
+        gopy = observe_gopy_worker(ROOT, request)
+        cueprobe = observe_cueprobe(ROOT, request)
+
+        expected_digest = "sha256:" + hashlib.sha256(str(number).encode()).hexdigest()
+        self.assertEqual(gopy.state, "project", gopy.diagnostics)
+        self.assertEqual(cueprobe.state, "project", cueprobe.diagnostics)
+        self.assertEqual(gopy.facts["concreteValueDigest"], expected_digest)
+        self.assertEqual(cueprobe.facts["concreteValueDigest"], expected_digest)
+        self.assertEqual(compare_native_backends(gopy, cueprobe)["state"], "shared-facts-equal")
 
     def test_missing_native_artifacts_are_typed_capability_gaps(self) -> None:
         request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)

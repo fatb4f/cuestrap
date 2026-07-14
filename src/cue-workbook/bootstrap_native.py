@@ -97,6 +97,7 @@ def build_extension(gopy: Path, runner: Path, tools: Path, extension: Path) -> N
     if extension.exists():
         shutil.rmtree(extension)
     shutil.move(staged_extension, extension)
+    run("go", "mod", "tidy", cwd=runner)
 
 
 def main() -> int:
