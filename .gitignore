@@ -11,7 +11,6 @@ __pycache__/
 htmlcov/
 
 # --- uv project files ---
-# Keep uv.lock committed, but ignore local workspace overrides.
 .python-version
 uv.lock.backup
 
@@ -19,13 +18,19 @@ uv.lock.backup
 __marimo__/cache/
 __marimo__/sessions/
 
-# --- local CUE bindings and build outputs ---
-.cue-py/
-.libcue/
+# --- native CUE bindings and build outputs ---
+.deps/
+src/cue-workbook/cue_native/
 *.so
 *.dylib
 *.dll
-runner/cueprobe
+*.pyd
+runner/bin/
+runner/go.sum
+
+# --- legacy local compatibility checkouts ---
+.cue-py/
+.libcue/
 
 # --- agent worktrees ---
 .codex/worktrees/
