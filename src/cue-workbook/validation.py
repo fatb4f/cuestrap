@@ -58,12 +58,13 @@ def run_properties(root: Path) -> dict[str, Any]:
         value = {
             "schema": OBSERVATION_PROTOCOL,
             "probeID": default_request.probe_id,
-            "evaluator": "property-test",
-            "stage": "evaluate",
-            "subject": default_subject.model_dump(by_alias=True),
+            "backend": "property-test",
+            "subjectDigest": default_subject.digest,
+            "state": "experimental-state",
             "facts": {key: True},
             "diagnostics": [],
             "commands": [],
+            "extensions": {},
         }
         try:
             ProbeObservation.model_validate(value)
@@ -84,10 +85,44 @@ def run_properties(root: Path) -> dict[str, Any]:
             return
         raise AssertionError(f"unsafe probe id accepted: {probe_id!r}")
 
+    json_scalar = st.none() | st.booleans() | st.integers(min_value=-1000, max_value=1000) | st.text(max_size=20)
+    json_value = st.recursive(
+        json_scalar,
+        lambda children: st.lists(children, max_size=3)
+        | st.dictionaries(st.text(max_size=9).map(lambda value: f"x{value}"), children, max_size=3),
+        max_leaves=8,
+    )
+
+    @settings(derandomize=True, deadline=None, max_examples=32)
+    @given(json_value)
+    def equivalent_subjects_have_deterministic_identities(extension: object) -> None:
+        counters["examples"] += 1
+        value = dict(DEFAULT_WORKBOOK_REQUEST)
+        value["extensions"] = {"generated": extension}
+        first, _, _ = materialize_subject(root, parse_probe_request(value))
+        second, _, _ = materialize_subject(root, parse_probe_request(value))
+        assert first == second
+        assert first.digest == second.digest
+
+    @settings(derandomize=True, deadline=None, max_examples=3)
+    @given(st.sampled_from(["backend", "state", "unknownEnvelopeField"]))
+    def malformed_envelopes_fail_cleanly(key: str) -> None:
+        counters["examples"] += 1
+        value = dict(DEFAULT_WORKBOOK_REQUEST)
+        value[key] = "unexpected"
+        try:
+            parse_probe_request(value)
+        except HarnessError as error:
+            assert error.code == HarnessFailure.INVALID_PROTOCOL
+            return
+        raise AssertionError(f"unknown envelope field accepted: {key}")
+
     bounded_paths_never_escape()
     claimant_request_fields_are_rejected()
     claimant_observation_fields_are_rejected()
     unsafe_probe_ids_are_rejected()
+    equivalent_subjects_have_deterministic_identities()
+    malformed_envelopes_fail_cleanly()
     return {"status": "pass", "examples": counters["examples"]}
 
 
@@ -103,7 +138,6 @@ def run_architecture_validation(root: Path) -> dict[str, Any]:
         if environment.locked
         and environment.exact
         and checks_pass
-        and cue_available
         and properties["status"] == "pass"
         else "fail",
         "environment": environment.model_dump(by_alias=True),

@@ -1,4 +1,4 @@
-"""Closed CUEstrap protocols, bounded coordinates, and semantic-subject identity."""
+"""Experimental v0 protocols with strict containment and provisional semantics."""
 from __future__ import annotations
 
 import hashlib
@@ -13,17 +13,22 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 WORKBOOK_PATH = Path("src/cue-workbook/cue-workbook.py")
 PROBE_PROTOCOL = "cuestrap.probe-request.v0"
 OBSERVATION_PROTOCOL = "cuestrap.probe-observation.v0"
+SUBJECT_IDENTITY_PROTOCOL = "cuestrap.subject-identity.v0"
 ENVIRONMENT_PROTOCOL = "cuestrap.environment.v0"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _PACKAGE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CLAIMANT_KEYS = frozenset(
     {
+        "pass",
         "success",
         "passed",
         "valid",
         "complete",
         "admitted",
         "admission",
+        "aligned",
+        "satisfied",
+        "stabilized",
         "canonicalReady",
         "expectationSatisfied",
     }
@@ -66,6 +71,8 @@ class SourceRef(BaseModel):
 
 
 class ProbeRequest(BaseModel):
+    """Closed experimental transport for the current backend adapters."""
+
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     schema_: Literal[PROBE_PROTOCOL] = Field(alias="schema")
@@ -73,10 +80,11 @@ class ProbeRequest(BaseModel):
     module_root: str = Field(alias="moduleRoot", default=".", min_length=1)
     package: str = Field(min_length=1)
     files: list[SourceRef] = Field(min_length=1, max_length=16)
-    operation: Literal["evaluate", "subsumes"]
+    operation: str = Field(min_length=1)
     subject_expression: str = Field(alias="subjectExpression", min_length=1)
     candidate_expression: str | None = Field(alias="candidateExpression", default=None)
     concrete_input: Any | None = Field(alias="concreteInput", default=None)
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_shape(self) -> "ProbeRequest":
@@ -94,6 +102,7 @@ class ProbeRequest(BaseModel):
 class ProcessObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    state: str = Field(min_length=1)
     argv: list[str]
     cwd: str
     started_at: str = Field(alias="startedAt")
@@ -106,19 +115,14 @@ class ProcessObservation(BaseModel):
 
 
 class SemanticSubject(BaseModel):
+    """Small digest-bound identity core; semantic components remain experimental."""
+
     model_config = ConfigDict(extra="forbid")
 
-    protocol: Literal[PROBE_PROTOCOL]
+    protocol: Literal[SUBJECT_IDENTITY_PROTOCOL]
     probe_id: str = Field(alias="probeID")
-    operation: Literal["evaluate", "subsumes"]
-    module_root: str = Field(alias="moduleRoot")
-    package: str
-    files: list[str]
-    file_digests: dict[str, str] = Field(alias="fileDigests")
-    subject_expression: str = Field(alias="subjectExpression")
-    candidate_expression: str | None = Field(alias="candidateExpression")
-    concrete_input_digest: str | None = Field(alias="concreteInputDigest")
     digest: str
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def digest_matches_components(self) -> "SemanticSubject":
@@ -130,22 +134,32 @@ class SemanticSubject(BaseModel):
 
 
 class ProbeObservation(BaseModel):
+    """Closed envelope with an open state and extensible backend fact payloads."""
+
     model_config = ConfigDict(extra="forbid")
 
     schema_: Literal[OBSERVATION_PROTOCOL] = Field(alias="schema")
     probe_id: str = Field(alias="probeID")
-    evaluator: str
-    stage: Literal["load", "compile", "evaluate", "validate", "project", "compare"]
-    subject: SemanticSubject
-    facts: dict[str, Any]
+    backend: str = Field(min_length=1)
+    subject_digest: str = Field(alias="subjectDigest", min_length=1)
+    subject_identity: SemanticSubject | None = Field(alias="subjectIdentity", default=None)
+    state: str = Field(min_length=1)
+    facts: dict[str, Any] = Field(default_factory=dict)
     diagnostics: list[dict[str, Any]] = Field(default_factory=list)
     commands: list[ProcessObservation] = Field(default_factory=list)
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
     def reject_claimant_fields(cls, value: object) -> object:
         _reject_claimant_fields(value, "probe observation")
         return value
+
+    @model_validator(mode="after")
+    def bind_subject_identity(self) -> "ProbeObservation":
+        if self.subject_identity is not None and self.subject_identity.digest != self.subject_digest:
+            raise ValueError("subjectIdentity digest does not match subjectDigest")
+        return self
 
 
 class EnvironmentReport(BaseModel):
@@ -254,9 +268,7 @@ def materialize_subject(repo_root: Path, request: ProbeRequest) -> tuple[Semanti
         paths.append(path)
         relative_files.append(relative)
         digests[relative] = _digest_file(path)
-    components = {
-        "protocol": PROBE_PROTOCOL,
-        "probeID": request.probe_id,
+    extensions = {
         "operation": request.operation,
         "moduleRoot": request.module_root,
         "package": request.package,
@@ -267,6 +279,12 @@ def materialize_subject(repo_root: Path, request: ProbeRequest) -> tuple[Semanti
         "concreteInputDigest": None
         if request.concrete_input is None
         else _digest_bytes(_json_bytes(request.concrete_input)),
+        "requestExtensions": request.extensions,
+    }
+    components = {
+        "protocol": SUBJECT_IDENTITY_PROTOCOL,
+        "probeID": request.probe_id,
+        "extensions": extensions,
     }
     subject = SemanticSubject.model_validate({**components, "digest": _digest_bytes(_json_bytes(components))})
     return subject, module, paths

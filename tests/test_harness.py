@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -13,7 +14,7 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 from mcp_server import McpServer  # noqa: E402
-from backends import observe_cue_py  # noqa: E402
+from backends import compare_backends, observe_cli, observe_cue_py  # noqa: E402
 from lsp_client import LspSession  # noqa: E402
 from models import (  # noqa: E402
     DEFAULT_WORKBOOK_REQUEST,
@@ -21,13 +22,14 @@ from models import (  # noqa: E402
     HarnessError,
     HarnessFailure,
     ProbeObservation,
+    ProcessObservation,
     SemanticSubject,
     SourceRef,
     materialize_subject,
     parse_probe_request,
 )
-from validation import execute_probe, run_properties  # noqa: E402
-from runtime import observe_environment  # noqa: E402
+from validation import execute_probe, run_architecture_validation, run_properties  # noqa: E402
+from runtime import observe_environment, run_process  # noqa: E402
 
 
 class HarnessTests(unittest.TestCase):
@@ -38,6 +40,7 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual([path.relative_to(ROOT).as_posix() for path in files], ["pattern/pilot.cue"])
         reparsed = SemanticSubject.model_validate(subject.model_dump(by_alias=True))
         self.assertEqual(reparsed.digest, subject.digest)
+        self.assertIn("fileDigests", subject.extensions)
 
     def test_tampered_subject_digest_is_rejected(self) -> None:
         request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
@@ -62,10 +65,11 @@ class HarnessTests(unittest.TestCase):
                 {
                     "schema": OBSERVATION_PROTOCOL,
                     "probeID": request.probe_id,
-                    "evaluator": "test",
-                    "stage": "evaluate",
-                    "subject": subject.model_dump(by_alias=True),
-                    "facts": {"admitted": True},
+                    "backend": "test",
+                    "subjectDigest": subject.digest,
+                    "state": "experimental",
+                    "extensions": {"admitted": True},
+                    "facts": {},
                     "diagnostics": [],
                     "commands": [],
                 }
@@ -92,7 +96,10 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result["schema"], "cuestrap.workbook-result.v0")
         self.assertFalse(result["cli"]["facts"]["available"])
         self.assertFalse(result["cuePy"]["facts"]["available"])
+        self.assertIn("pattern/pilot.cue", result["cli"]["subjectIdentity"]["extensions"]["fileDigests"])
         self.assertTrue(result["comparison"]["equivalentSubjects"])
+        self.assertEqual(result["comparison"]["state"], "capability-gap")
+        self.assertEqual(result["comparison"]["comparisons"], {})
 
     def test_unavailable_cue_py_does_not_preprocess_sources(self) -> None:
         request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
@@ -101,6 +108,130 @@ class HarnessTests(unittest.TestCase):
         ):
             result = observe_cue_py(ROOT, request)
         self.assertFalse(result.facts["available"])
+
+    def test_experimental_observation_state_and_extensions_are_allowed(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+        observation = ProbeObservation.model_validate(
+            {
+                "schema": OBSERVATION_PROTOCOL,
+                "probeID": request.probe_id,
+                "backend": "experimental-backend",
+                "subjectDigest": subject.digest,
+                "state": "newly-discovered-state",
+                "facts": {"backendSpecificFact": 1},
+                "extensions": {"newChannel": {"value": 2}},
+            }
+        )
+        self.assertEqual(observation.state, "newly-discovered-state")
+        self.assertEqual(observation.extensions["newChannel"]["value"], 2)
+
+    def test_unknown_observation_envelope_field_is_rejected(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+        with self.assertRaises(ValidationError):
+            ProbeObservation.model_validate(
+                {
+                    "schema": OBSERVATION_PROTOCOL,
+                    "probeID": request.probe_id,
+                    "backend": "test",
+                    "subjectDigest": subject.digest,
+                    "state": "experimental",
+                    "unknown": True,
+                }
+            )
+
+    def test_observation_rejects_mismatched_subject_identity(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+        with self.assertRaises(ValidationError):
+            ProbeObservation.model_validate(
+                {
+                    "schema": OBSERVATION_PROTOCOL,
+                    "probeID": request.probe_id,
+                    "backend": "test",
+                    "subjectDigest": "sha256:different",
+                    "subjectIdentity": subject.model_dump(by_alias=True),
+                    "state": "experimental",
+                }
+            )
+
+    def test_unknown_operation_is_transportable_but_unsupported_by_adapter(self) -> None:
+        value = dict(DEFAULT_WORKBOOK_REQUEST)
+        value["operation"] = "future-operation"
+        request = parse_probe_request(value)
+        with patch("backends.shutil.which", return_value="/unused/cue"):
+            observation = observe_cli(ROOT, request)
+        self.assertEqual(observation.state, "unsupported-operation")
+        self.assertNotIn("semanticBottom", observation.facts)
+
+    def test_backend_comparison_accepts_new_shared_fact_channels(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        subject, _, _ = materialize_subject(ROOT, request)
+        observations = [
+            ProbeObservation.model_validate(
+                {
+                    "schema": OBSERVATION_PROTOCOL,
+                    "probeID": request.probe_id,
+                    "backend": backend,
+                    "subjectDigest": subject.digest,
+                    "state": "experimental",
+                    "facts": {"available": True, "futureFact": {"value": 1}},
+                }
+            )
+            for backend in ("first", "second")
+        ]
+        comparison = compare_backends(*observations)
+        self.assertEqual(comparison["state"], "shared-facts-equal")
+        self.assertEqual(list(comparison["comparisons"]), ["futureFact"])
+
+    def test_cli_process_failure_does_not_claim_semantic_bottom(self) -> None:
+        request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
+        process = ProcessObservation.model_validate(
+            {
+                "state": "exited",
+                "argv": ["cue", "eval"],
+                "cwd": str(ROOT),
+                "startedAt": "2026-01-01T00:00:00Z",
+                "finishedAt": "2026-01-01T00:00:01Z",
+                "exitCode": 1,
+                "stdout": "",
+                "stderr": "structural failure",
+                "stdoutDigest": "sha256:empty",
+                "stderrDigest": "sha256:error",
+            }
+        )
+        with patch("backends.shutil.which", return_value="/unused/cue"), patch(
+            "backends.run_process", return_value=process
+        ):
+            observation = observe_cli(ROOT, request)
+        self.assertEqual(observation.state, "process-failure")
+        self.assertNotIn("semanticBottom", observation.facts)
+
+    def test_process_observation_distinguishes_timeout_and_start_error(self) -> None:
+        with patch(
+            "runtime.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["tool"], 1, output=b"partial", stderr=b"timed out"),
+        ):
+            timed_out = run_process(("tool",), cwd=ROOT)
+        with patch("runtime.subprocess.run", side_effect=OSError("missing")):
+            start_error = run_process(("tool",), cwd=ROOT)
+        self.assertEqual(timed_out.state, "timeout")
+        self.assertEqual(start_error.state, "start-error")
+
+    def test_unavailable_semantic_tools_do_not_fail_architecture_validation(self) -> None:
+        environment = Mock()
+        environment.locked = True
+        environment.exact = True
+        environment.checks = [{"status": "pass"}]
+        environment.tools = {"cue": {"available": False}, "gopls": {"available": False}}
+        environment.model_dump.return_value = {}
+        with patch("validation.observe_environment", return_value=environment), patch(
+            "validation.run_properties", return_value={"status": "pass", "examples": 1}
+        ):
+            result = run_architecture_validation(ROOT)
+        self.assertEqual(result["status"], "pass")
+        self.assertFalse(result["requirements"]["cueAvailable"])
 
     def test_canonical_interpreter_uses_virtualenv_prefix(self) -> None:
         with patch("runtime.shutil.which", return_value=None), patch(

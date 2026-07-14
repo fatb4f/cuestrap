@@ -7,7 +7,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -47,9 +47,10 @@ def observe_cli(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
             {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-cli",
-                "stage": "load",
-                "subject": subject.model_dump(by_alias=True),
+                "backend": "cue-cli",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "unavailable",
                 "facts": {"available": False},
                 "diagnostics": [{"code": HarnessFailure.TOOL_UNAVAILABLE.value, "message": "cue unavailable"}],
                 "commands": [],
@@ -58,43 +59,84 @@ def observe_cli(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
 
     relative = [path.relative_to(module).as_posix() for path in files]
     commands: list[ProcessObservation] = []
+    if request.operation not in {"evaluate", "subsumes"}:
+        return ProbeObservation.model_validate(
+            {
+                "schema": OBSERVATION_PROTOCOL,
+                "probeID": request.probe_id,
+                "backend": "cue-cli",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "unsupported-operation",
+                "facts": {"available": True},
+                "diagnostics": [
+                    {
+                        "code": "unsupported-operation",
+                        "message": f"cue-cli adapter does not implement {request.operation!r}",
+                    }
+                ],
+            }
+        )
+
     if request.operation == "evaluate":
         common = (cue, "eval", "-p", request.package, "-e", _effective_expression(request), *relative)
         evaluated = run_process(common, cwd=module)
         commands.append(evaluated)
-        bottom = evaluated.exit_code not in (0, None) or bool(re.search(r"(?m)^\s*_\|_", evaluated.stdout))
         facts: dict[str, Any] = {
-            "available": evaluated.exit_code is not None,
-            "semanticBottom": bottom,
+            "available": True,
             "exitCode": evaluated.exit_code,
+            "processState": evaluated.state,
         }
-        stage: Literal["load", "compile", "evaluate", "validate", "project", "compare"] = "evaluate"
-        if evaluated.exit_code == 0 and not bottom:
+        state = "evaluate"
+        diagnostics: list[dict[str, Any]] = []
+        if evaluated.state != "exited" or evaluated.exit_code != 0:
+            state = evaluated.state if evaluated.state != "exited" else "process-failure"
+            diagnostics.append(
+                {
+                    "code": state,
+                    "message": evaluated.stderr or "cue eval exited without a semantic observation",
+                }
+            )
+        else:
+            bottom = bool(re.search(r"(?m)^\s*_\|_", evaluated.stdout))
+            facts["semanticBottom"] = bottom
+        if evaluated.state == "exited" and evaluated.exit_code == 0 and not facts.get("semanticBottom", False):
             exported = run_process(
                 (cue, "export", "--out", "json", "-p", request.package, "-e", _effective_expression(request), *relative),
                 cwd=module,
             )
             commands.append(exported)
-            stage = "project"
-            if exported.exit_code == 0:
+            facts["projectionProcessState"] = exported.state
+            if exported.state == "exited" and exported.exit_code == 0:
+                state = "project"
                 try:
                     concrete = json.loads(exported.stdout)
                     facts["concrete"] = True
                     facts["concreteValueDigest"] = _digest_bytes(_json_bytes(concrete))
                 except json.JSONDecodeError:
+                    state = "protocol-error"
                     facts["concrete"] = False
                     facts["invalidJSON"] = True
+                    diagnostics.append({"code": "invalid-json", "message": "cue export did not return JSON"})
             else:
+                state = "incomplete" if exported.state == "exited" else exported.state
                 facts["concrete"] = False
+                diagnostics.append(
+                    {
+                        "code": state,
+                        "message": exported.stderr or "cue export did not produce a concrete value",
+                    }
+                )
         return ProbeObservation.model_validate(
             {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-cli",
-                "stage": stage,
-                "subject": subject.model_dump(by_alias=True),
+                "backend": "cue-cli",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": state,
                 "facts": facts,
-                "diagnostics": [],
+                "diagnostics": diagnostics,
                 "commands": [item.model_dump(by_alias=True) for item in commands],
             }
         )
@@ -108,6 +150,28 @@ def observe_cli(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
         (cue, "eval", "-p", request.package, "-e", request.candidate_expression, *relative),
         cwd=module,
     )
+    commands.extend((subject_eval, candidate_eval))
+    materialized = all(item.state == "exited" and item.exit_code == 0 for item in commands)
+    if not materialized:
+        return ProbeObservation.model_validate(
+            {
+                "schema": OBSERVATION_PROTOCOL,
+                "probeID": request.probe_id,
+                "backend": "cue-cli",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "materialization-failure",
+                "facts": {"available": True},
+                "diagnostics": [
+                    {
+                        "code": "materialization-failure",
+                        "message": "subject and candidate must both evaluate before comparison",
+                    }
+                ],
+                "commands": [item.model_dump(by_alias=True) for item in commands],
+            }
+        )
+
     unified_eval = run_process(
         (
             cue,
@@ -120,24 +184,39 @@ def observe_cli(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
         ),
         cwd=module,
     )
-    commands.extend((subject_eval, candidate_eval, unified_eval))
-    available = all(item.exit_code is not None for item in commands)
-    semantic_bottom = unified_eval.exit_code not in (0, None) or bool(re.search(r"(?m)^\s*_\|_", unified_eval.stdout))
-    normal_form_equal = (
-        subject_eval.exit_code == 0
-        and candidate_eval.exit_code == 0
-        and unified_eval.exit_code == 0
-        and unified_eval.stdout.strip() == candidate_eval.stdout.strip()
-    )
+    commands.append(unified_eval)
+    if unified_eval.state != "exited" or unified_eval.exit_code != 0:
+        return ProbeObservation.model_validate(
+            {
+                "schema": OBSERVATION_PROTOCOL,
+                "probeID": request.probe_id,
+                "backend": "cue-cli",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "operation-failure" if unified_eval.state == "exited" else unified_eval.state,
+                "facts": {"available": True},
+                "diagnostics": [
+                    {
+                        "code": "operation-failure",
+                        "message": unified_eval.stderr or "cue unification did not produce a semantic observation",
+                    }
+                ],
+                "commands": [item.model_dump(by_alias=True) for item in commands],
+            }
+        )
+
+    semantic_bottom = bool(re.search(r"(?m)^\s*_\|_", unified_eval.stdout))
+    normal_form_equal = unified_eval.stdout.strip() == candidate_eval.stdout.strip()
     return ProbeObservation.model_validate(
         {
             "schema": OBSERVATION_PROTOCOL,
             "probeID": request.probe_id,
-            "evaluator": "cue-cli",
-            "stage": "compare",
-            "subject": subject.model_dump(by_alias=True),
+            "backend": "cue-cli",
+            "subjectDigest": subject.digest,
+            "subjectIdentity": subject.model_dump(by_alias=True),
+            "state": "compare",
             "facts": {
-                "available": available,
+                "available": True,
                 "semanticBottom": semantic_bottom,
                 "normalFormEqualToCandidate": normal_form_equal,
                 "subsumesApproximation": normal_form_equal and not semantic_bottom,
@@ -200,9 +279,10 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
             {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-py/libcue",
-                "stage": "load",
-                "subject": subject.model_dump(by_alias=True),
+                "backend": "cue-py/libcue",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "unavailable",
                 "facts": {"available": False},
                 "diagnostics": [
                     {
@@ -211,6 +291,25 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
                     }
                 ],
                 "commands": [],
+            }
+        )
+    if request.operation not in {"evaluate", "subsumes"}:
+        subject, _, _ = materialize_subject(repo_root, request)
+        return ProbeObservation.model_validate(
+            {
+                "schema": OBSERVATION_PROTOCOL,
+                "probeID": request.probe_id,
+                "backend": "cue-py/libcue",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "unsupported-operation",
+                "facts": {"available": True},
+                "diagnostics": [
+                    {
+                        "code": "unsupported-operation",
+                        "message": f"cue-py/libcue adapter does not implement {request.operation!r}",
+                    }
+                ],
             }
         )
     payload, subject = _cue_py_payload(repo_root, request)
@@ -222,16 +321,18 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
         input_bytes=_json_bytes(payload),
         timeout=60,
     )
-    if worker.exit_code != 0:
+    if worker.state != "exited" or worker.exit_code != 0:
+        state = worker.state if worker.state != "exited" else "process-failure"
         return ProbeObservation.model_validate(
             {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-py/libcue",
-                "stage": "compile",
-                "subject": subject.model_dump(by_alias=True),
+                "backend": "cue-py/libcue",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": state,
                 "facts": {"available": True, "libcueDigest": _digest_file(library)},
-                "diagnostics": [{"code": HarnessFailure.PROCESS_FAILURE.value, "message": worker.stderr}],
+                "diagnostics": [{"code": state, "message": worker.stderr}],
                 "commands": [worker.model_dump(by_alias=True)],
             }
         )
@@ -240,7 +341,7 @@ def observe_cue_py(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
         observation = ProbeObservation.model_validate(value)
     except (json.JSONDecodeError, ValidationError) as error:
         raise HarnessError(HarnessFailure.BACKEND_PROTOCOL, str(error)) from error
-    if observation.subject.digest != subject.digest:
+    if observation.subject_digest != subject.digest:
         raise HarnessError(HarnessFailure.BACKEND_PROTOCOL, "cue-py worker changed semantic subject identity")
     observation.commands.append(worker)
     observation.facts["libcueDigest"] = _digest_file(library)
@@ -270,10 +371,11 @@ def _cue_py_worker() -> int:
             observation = {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-py/libcue",
-                "stage": "compile",
-                "subject": subject.model_dump(by_alias=True),
-                "facts": {"available": True, "semanticBottom": True},
+                "backend": "cue-py/libcue",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": "compile-error",
+                "facts": {"available": True},
                 "diagnostics": [{"code": "compile-error", "message": str(compiled_error)}],
                 "commands": [],
             }
@@ -281,35 +383,44 @@ def _cue_py_worker() -> int:
             left = compiled.lookup("_cuestrapSubject")
             left_error = left.error()
             bottom = type(left_error).__name__ == "Err"
-            facts: dict[str, Any] = {"available": True, "semanticBottom": bottom}
+            facts: dict[str, Any] = {"available": True}
             stage = "evaluate"
             diagnostics: list[dict[str, Any]] = []
             if bottom:
-                diagnostics.append({"code": "bottom", "message": str(left_error)})
+                stage = "evaluation-error"
+                diagnostics.append({"code": "evaluation-error", "message": str(left_error)})
             elif request.operation == "evaluate":
+                facts["semanticBottom"] = False
                 try:
                     concrete_json = left.to_json()
                     facts["concrete"] = True
                     facts["concreteValueDigest"] = _digest_bytes(_json_bytes(json.loads(concrete_json)))
                     stage = "project"
                 except Exception as error:
+                    stage = "incomplete"
                     facts["concrete"] = False
                     diagnostics.append({"code": "incomplete", "message": str(error)[:2000]})
             else:
                 right = compiled.lookup("_cuestrapCandidate")
-                try:
-                    right.check_schema(left)
-                    facts["subsumes"] = True
-                except Exception as error:
-                    facts["subsumes"] = False
-                    diagnostics.append({"code": "does-not-subsume", "message": str(error)[:2000]})
-                stage = "compare"
+                right_error = right.error()
+                if type(right_error).__name__ == "Err":
+                    stage = "materialization-error"
+                    diagnostics.append({"code": "materialization-error", "message": str(right_error)})
+                else:
+                    try:
+                        right.check_schema(left)
+                        facts["subsumes"] = True
+                    except Exception as error:
+                        facts["subsumes"] = False
+                        diagnostics.append({"code": "does-not-subsume", "message": str(error)[:2000]})
+                    stage = "compare"
             observation = {
                 "schema": OBSERVATION_PROTOCOL,
                 "probeID": request.probe_id,
-                "evaluator": "cue-py/libcue",
-                "stage": stage,
-                "subject": subject.model_dump(by_alias=True),
+                "backend": "cue-py/libcue",
+                "subjectDigest": subject.digest,
+                "subjectIdentity": subject.model_dump(by_alias=True),
+                "state": stage,
                 "facts": facts,
                 "diagnostics": diagnostics,
                 "commands": [],
@@ -322,22 +433,32 @@ def _cue_py_worker() -> int:
 
 
 def compare_backends(cli: ProbeObservation, cue_py: ProbeObservation) -> dict[str, Any]:
-    equivalent = cli.subject.digest == cue_py.subject.digest and cli.subject == cue_py.subject
-    comparable_keys = {"semanticBottom", "concreteValueDigest", "subsumes"}
+    equivalent = cli.subject_digest == cue_py.subject_digest
+    shared_keys = set(cli.facts).intersection(cue_py.facts).difference({"available"})
     comparisons = {
         key: {
             "cli": cli.facts.get(key),
             "cuePy": cue_py.facts.get(key),
             "agrees": cli.facts.get(key) == cue_py.facts.get(key),
         }
-        for key in sorted(comparable_keys)
-        if key in cli.facts or key in cue_py.facts
+        for key in sorted(shared_keys)
     }
+    available = cli.facts.get("available") is True and cue_py.facts.get("available") is True
+    if not available:
+        state = "capability-gap"
+    elif not equivalent:
+        state = "identity-mismatch"
+    elif not comparisons:
+        state = "incomparable"
+    elif all(item["agrees"] for item in comparisons.values()):
+        state = "shared-facts-equal"
+    else:
+        state = "shared-facts-differ"
     return {
         "schema": "cuestrap.backend-comparison.v0",
         "probeID": cli.probe_id,
+        "state": state,
         "equivalentSubjects": equivalent,
-        "subjectDigest": cli.subject.digest if equivalent else None,
+        "subjectDigest": cli.subject_digest if equivalent else None,
         "comparisons": comparisons,
-        "allComparableFactsAgree": equivalent and all(item["agrees"] for item in comparisons.values()),
     }

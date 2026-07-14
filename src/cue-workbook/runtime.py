@@ -36,15 +36,23 @@ def run_process(
             check=False,
             timeout=timeout,
         )
+        state = "exited"
         exit_code: int | None = completed.returncode
         stdout = completed.stdout
         stderr = completed.stderr
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        state = "timeout"
+        exit_code = None
+        stdout = error.stdout or b""
+        stderr = error.stderr or f"{type(error).__name__}: {error}".encode()
+    except OSError as error:
+        state = "start-error"
         exit_code = None
         stdout = b""
         stderr = f"{type(error).__name__}: {error}".encode()
     return ProcessObservation.model_validate(
         {
+            "state": state,
             "argv": list(argv),
             "cwd": str(cwd),
             "startedAt": started,
