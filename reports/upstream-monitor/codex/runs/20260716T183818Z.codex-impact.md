@@ -38,7 +38,7 @@
 ## Purpose impact: supervisory session controller
 
 - Decision: `blocking-gate`.
-- The alpha channel changes permission/configuration and dynamic instruction/skill surfaces that CUEstrap models as closed supervisory ingress. Requalification is required before the controller can claim coverage for the current alpha ref.
+- Main changes turn-scoped project-instruction loading through captured environment state, while alpha changes permission/configuration and dynamic instruction/skill surfaces. Requalification is required before the controller can claim coverage for either current channel.
 - Main and alpha also changed sub-agent/session state; these remain an unsupported ownership boundary rather than evidence of current multi-agent coverage.
 - Matched surfaces: `permission-sandbox-approval`, `instruction-skill-policy`, `session-turn-identity`, `context-turn-lifecycle`, `multi-agent-session-control`.
 
@@ -51,13 +51,13 @@
 
 ## Critical
 
+- `main-active-turn-instruction-context` — `blocking-gate`: main now preserves each turn's captured environment selection while loading project instructions, so settings changes apply only to later turns. Requalify the repository instruction chain, turn identity, and context-boundary assumptions against this turn-scoped behavior.
 - `alpha-permission-contract-delta` — `blocking-gate`: the current alpha history changes app-server permission schemas, core permission configuration, config aliases, and sandbox-related policy paths. Requalify the closed CUE/Pydantic `permission_mode` ingress and fail-closed admission policy against `latest-alpha-cli`.
 - `alpha-instruction-skill-delta` — `blocking-gate`: the current alpha history changes dynamic skill-selector implementations and related invocation surfaces. Recheck repository instruction loading and session-phase constraints before treating alpha skill behavior as covered.
 
 ## High
 
 - `main-code-mode-image-output-contract` — `contract-update`: commit `5331d20f6ef9b80ee4153132a70d4989780d916d` requires `data:` URLs for code-mode image output and converts malformed or unsupported image values into explicit tool-call errors. Compare workbook result normalization and error classification with this envelope.
-- `main-active-turn-environment-lifecycle` — `contract-update`: main keeps active-turn environments stable across settings updates. Recheck session continuity and context-boundary assumptions used by the controller and workbook.
 - `alpha-mcp-context-contract` — `contract-update`: the alpha delta changes RMCP tests, MCP tool-call handling, environment-instruction world state, session state, and app metadata APIs. Requalify raw observations and context persistence independently from main.
 
 ## Notes
