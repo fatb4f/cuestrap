@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from .ledger import DurableLedger
 from .models import Activity, PostToolUseInput, PreToolUseInput
+from .routing import plan_pretool_route, render_pretool_response, restore_posttool_event
 from .supervisor import Supervisor
 
 
@@ -62,23 +63,6 @@ def _protocol_failure(event_name: object, reason: str) -> dict[str, object]:
     return {"systemMessage": reason}
 
 
-def _wire_safe_response(response: dict[str, object]) -> dict[str, object]:
-    """Remove the provisional internal approve marker from Codex wire output."""
-    specific = response.get("hookSpecificOutput")
-    if not isinstance(specific, dict):
-        return response
-    if specific.get("hookEventName") != "PreToolUse":
-        return response
-    if specific.get("permissionDecision") != "approve":
-        return response
-
-    sanitized = dict(specific)
-    sanitized.pop("permissionDecision", None)
-    if set(sanitized) == {"hookEventName"}:
-        return {}
-    return {**response, "hookSpecificOutput": sanitized}
-
-
 def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
     args = _parser().parse_args(argv)
     repository_root = args.repository_root.resolve(strict=True)
@@ -94,9 +78,24 @@ def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
             raise ValueError("hook input must be a JSON object")
         event_name = raw.get("hook_event_name")
         if event_name == "PreToolUse":
-            response = supervisor.handle_pre(PreToolUseInput.model_validate(raw))
+            event = PreToolUseInput.model_validate(raw)
+            if wire_safe:
+                route = plan_pretool_route(event, repository_root)
+                if route.behavior == "redirect":
+                    response = render_pretool_response(route, {})
+                else:
+                    semantic_event = route.semantic_event or event
+                    response = render_pretool_response(
+                        route,
+                        supervisor.handle_pre(semantic_event),
+                    )
+            else:
+                response = supervisor.handle_pre(event)
         elif event_name == "PostToolUse":
-            response = supervisor.handle_post(PostToolUseInput.model_validate(raw))
+            event = PostToolUseInput.model_validate(raw)
+            if wire_safe:
+                event = restore_posttool_event(event, repository_root)
+            response = supervisor.handle_post(event)
         else:
             raise ValueError(f"unsupported hook event: {event_name!r}")
     except (OSError, ValueError, ValidationError) as error:
@@ -105,8 +104,6 @@ def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
             event_name,
             f"CUEstrap supervisory hook recorded a local adapter failure: {error}",
         )
-    if wire_safe:
-        response = _wire_safe_response(response)
     print(json.dumps(response, sort_keys=True))
     return 0
 
