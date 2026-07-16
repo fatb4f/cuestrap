@@ -1,4 +1,4 @@
-"""Command adapter for Codex hooks and explicit operator scope transitions."""
+"""Command adapter for Codex hooks and read-only supervisor inspection."""
 from __future__ import annotations
 
 import argparse
@@ -12,15 +12,7 @@ from typing import get_args
 from pydantic import ValidationError
 
 from .ledger import DurableLedger
-from .models import (
-    DEFAULT_TARGETS_BY_ACTIVITY,
-    Activity,
-    PostToolUseInput,
-    PreToolUseInput,
-    Scope,
-    Surface,
-    TargetID,
-)
+from .models import Activity, PostToolUseInput, PreToolUseInput
 from .supervisor import Supervisor
 
 
@@ -55,61 +47,44 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repository-root", type=Path, required=True)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("hook")
-
-    scope = subparsers.add_parser("set-scope")
-    scope.add_argument("activity", choices=get_args(Activity))
-    scope.add_argument("--surface", choices=get_args(Surface), required=True)
-    scope.add_argument("--owned-path", action="append", default=[])
-    scope.add_argument("--allowed-target", choices=get_args(TargetID), action="append")
-    scope.add_argument("--reason", required=True)
-
-    phase = subparsers.add_parser("set-phase")
-    phase.add_argument("phase", choices=get_args(Activity))
-    phase.add_argument("--reason", required=True)
     subparsers.add_parser("status")
     return parser
 
 
 def _protocol_failure(event_name: object, reason: str) -> dict[str, object]:
-    if event_name == "PreToolUse":
+    if event_name in {"PreToolUse", "PostToolUse"}:
         return {
             "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "approve",
+                "hookEventName": event_name,
                 "additionalContext": reason,
             }
         }
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": reason,
-        }
-    }
+    return {"systemMessage": reason}
 
 
-def main(argv: list[str] | None = None) -> int:
+def _wire_safe_response(response: dict[str, object]) -> dict[str, object]:
+    """Remove the provisional internal approve marker from Codex wire output."""
+    specific = response.get("hookSpecificOutput")
+    if not isinstance(specific, dict):
+        return response
+    if specific.get("hookEventName") != "PreToolUse":
+        return response
+    if specific.get("permissionDecision") != "approve":
+        return response
+
+    sanitized = dict(specific)
+    sanitized.pop("permissionDecision", None)
+    if set(sanitized) == {"hookEventName"}:
+        return {}
+    return {**response, "hookSpecificOutput": sanitized}
+
+
+def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
     args = _parser().parse_args(argv)
     repository_root = args.repository_root.resolve(strict=True)
     supervisor = _supervisor(repository_root)
     if args.command == "status":
         print(json.dumps(supervisor.status(), sort_keys=True, indent=2))
-        return 0
-    if args.command == "set-scope":
-        targets = tuple(args.allowed_target or DEFAULT_TARGETS_BY_ACTIVITY[args.activity])
-        state = supervisor.set_scope(
-            Scope(
-                activity=args.activity,
-                surface=args.surface,
-                owned_paths=tuple(args.owned_path),
-                allowed_targets=targets,
-            ),
-            reason=args.reason,
-        )
-        print(state.model_dump_json(by_alias=True, indent=2))
-        return 0
-    if args.command == "set-phase":
-        state = supervisor.set_phase(args.phase, reason=args.reason)
-        print(state.model_dump_json(by_alias=True, indent=2))
         return 0
 
     raw: object = None
@@ -130,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
             event_name,
             f"CUEstrap supervisory hook recorded a local adapter failure: {error}",
         )
+    if wire_safe:
+        response = _wire_safe_response(response)
     print(json.dumps(response, sort_keys=True))
     return 0
 
