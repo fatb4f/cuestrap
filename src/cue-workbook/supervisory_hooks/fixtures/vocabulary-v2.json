@@ -1,0 +1,49 @@
+{
+  "activities": ["inspect", "probe", "implement", "evaluate", "collect-evidence"],
+  "surfaces": ["authority", "pattern", "kernel", "fixture", "probe", "runner", "workbook", "none"],
+  "artifactRoles": ["owned", "protected", "generated", "runtime-state", "unclassified"],
+  "targetIDs": [
+    "shell.read",
+    "git.read",
+    "git.mutation",
+    "cue.lsp",
+    "gopls.read",
+    "workspace.apply-patch",
+    "workspace.mutation",
+    "supervisor.transition",
+    "code-mode.resolve-session",
+    "code-mode.capture-state",
+    "code-mode.run-focused-probe",
+    "code-mode.apply-cell-transaction",
+    "evaluation.cue",
+    "evaluation.python",
+    "evaluation.go",
+    "evaluation.workbook",
+    "just.list",
+    "just.summary",
+    "just.dump",
+    "just.check"
+  ],
+  "decisionReasons": [
+    "phase-relevant",
+    "new-observation",
+    "bounded-correction",
+    "unknown-operation",
+    "identical-retry",
+    "failure-cluster-exhausted",
+    "fanout-budget-exceeded",
+    "wrong-observation-channel",
+    "phase-invalid-churn",
+    "mixed-candidate-state",
+    "protected-artifact-mutation"
+  ],
+  "denialPrecedence": [
+    "protected-artifact-mutation",
+    "mixed-candidate-state",
+    "wrong-observation-channel",
+    "identical-retry",
+    "failure-cluster-exhausted",
+    "fanout-budget-exceeded",
+    "phase-invalid-churn"
+  ]
+}

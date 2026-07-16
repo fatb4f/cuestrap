@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "supervisory-state/v2",
+  "version": 2,
+  "scope": {
+    "activity": "implement",
+    "surface": "workbook",
+    "ownedPaths": ["src/cue-workbook/supervisory_hooks/**"],
+    "allowedTargets": ["shell.read", "workspace.apply-patch"]
+  },
+  "budgets": {
+    "maximumFailureClusterCorrections": 2,
+    "maximumObservationFanout": 64
+  },
+  "sessionID": "session-v2",
+  "runID": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "attemptID": "turn-v2",
+  "pending": {},
+  "legacyStateDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+}

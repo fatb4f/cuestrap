@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "supervisory-state/v1",
+  "phase": "implement",
+  "sequence": 7,
+  "sessionID": "legacy-session",
+  "runID": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "attemptID": "legacy-turn",
+  "quarantined": true,
+  "quarantineReason": "legacy quarantine is discarded semantically",
+  "quarantineSequence": 6,
+  "mutationRequiresEvaluation": true,
+  "lastEvaluationSequence": null,
+  "pending": {},
+  "failedFingerprints": {
+    "sha256:2222222222222222222222222222222222222222222222222222222222222222": 1
+  }
+}

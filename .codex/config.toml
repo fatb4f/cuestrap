@@ -6,22 +6,22 @@ inherit = "all"
 exclude = ["PYTHONHOME"]
 
 [[hooks.PreToolUse]]
-matcher = "*"
+matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*)$"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
 command = '"$(git rev-parse --show-toplevel)/.venv/bin/python" "$(git rev-parse --show-toplevel)/.codex/hooks/cuestrap_tool_supervisor.py" --repository-root "$(git rev-parse --show-toplevel)" hook'
 timeout = 10
-statusMessage = "Checking CUEstrap bootstrap phase"
+statusMessage = "Checking CUEstrap anti-churn evidence"
 
 [[hooks.PostToolUse]]
-matcher = "*"
+matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*)$"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
 command = '"$(git rev-parse --show-toplevel)/.venv/bin/python" "$(git rev-parse --show-toplevel)/.codex/hooks/cuestrap_tool_supervisor.py" --repository-root "$(git rev-parse --show-toplevel)" hook'
 timeout = 10
-statusMessage = "Recording CUEstrap tool observation"
+statusMessage = "Recording CUEstrap progress evidence"
 
 [mcp_servers.cue_lsp]
 command = "uv"
