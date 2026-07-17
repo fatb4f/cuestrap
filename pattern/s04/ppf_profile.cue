@@ -22,24 +22,24 @@ package s04
 })
 
 #PPFExecutionLimits: close({
-	timeSeconds:       number & >0
-	memoryMiB:         int & >0
-	outputMiB:         int & >0
-	validationSeconds: number & >0
-	validationMemoryMiB: int & >0
+	timeSeconds:          number & >0
+	memoryMiB:            int & >0
+	outputMiB:            int & >0
+	validationSeconds:    number & >0
+	validationMemoryMiB:  int & >0
 })
 
 #PPFPackagePaths: close({
-	problemConfig:      "problem.yaml"
-	statement:          #RelativePath
-	secretDataRoot:     "data/secret"
-	submissionsRoot:    "submissions"
+	problemConfig:       "problem.yaml"
+	statement:           #RelativePath
+	secretDataRoot:      "data/secret"
+	submissionsRoot:     "submissions"
 	inputValidatorsRoot: "input_validators"
-	judgeEntrypoint:    #RelativePath
-	rawObservationRoot: #RelativePath
-	normalizedFactRoot: #RelativePath
-	comparisonRoot:     #RelativePath
-	judgementRoot:      #RelativePath
+	judgeEntrypoint:     #RelativePath
+	rawObservationRoot:  #RelativePath
+	normalizedFactRoot:  #RelativePath
+	comparisonRoot:      #RelativePath
+	judgementRoot:       #RelativePath
 })
 
 #PPFCaseGroup: close({
@@ -48,10 +48,10 @@ package s04
 })
 
 #PPFCase: close({
-	caseID:      #SafeID
-	groupID:     #SafeID
-	inputPath:   #RelativePath
-	answerPath:  #RelativePath
+	caseID:       #SafeID
+	groupID:      #SafeID
+	inputPath:    #RelativePath
+	answerPath:   #RelativePath
 	evidencePath: #RelativePath
 })
 
@@ -60,19 +60,19 @@ package s04
 	"rejected"
 
 #PPFCandidate: close({
-	candidateID: #SafeID
-	sourcePath:  #RelativePath
-	expectation: #CandidateExpectation
+	candidateID:  #SafeID
+	sourcePath:   #RelativePath
+	expectation:  #CandidateExpectation
 	evidencePath: #RelativePath
 })
 
 #PPFValidator: close({
-	validatorID: #SafeID
-	kind:        "s04-independent-judge"
-	entrypoint:  #RelativePath
-	semanticAuthorityID: #SafeID
-	observationInputRoot: #RelativePath
-	judgementOutputRoot:  #RelativePath
+	validatorID:           #SafeID
+	kind:                  "s04-independent-judge"
+	entrypoint:            #RelativePath
+	semanticAuthorityID:   #SafeID
+	observationInputRoot:  #RelativePath
+	judgementOutputRoot:   #RelativePath
 })
 
 #PPFEvidenceRequirement: close({
@@ -96,10 +96,16 @@ package s04
 
 	packageID:     #SafeID
 	packageDigest: #Digest
-	metadata:      #PPFProblemMetadata
-	limits:        #PPFExecutionLimits
-	paths:         #PPFPackagePaths
-	validator:     #PPFValidator
+	metadata: #PPFProblemMetadata & {
+		problemFormatVersion: sourceSpecVersion
+	}
+	limits: #PPFExecutionLimits
+	paths:  #PPFPackagePaths
+	validator: #PPFValidator & {
+		entrypoint:           paths.judgeEntrypoint
+		observationInputRoot: paths.rawObservationRoot
+		judgementOutputRoot:  paths.judgementRoot
+	}
 
 	groups: [GroupID=#SafeID]: #PPFCaseGroup & {
 		groupID: GroupID
@@ -116,26 +122,26 @@ package s04
 })
 
 #CaseProjectionBinding: close({
-	bindingID:        #SafeID
+	bindingID:         #SafeID
 	realizationCaseID: #SafeID
-	packageCaseID:    #SafeID
+	packageCaseID:     #SafeID
 })
 
 #AuthorityProjection: close({
-	semanticAuthorityID: #SafeID
+	semanticAuthorityID:        #SafeID
 	packageDeclarerAuthorityID: #SafeID
-	rawObserverAuthorityIDs: [#SafeID, ...#SafeID]
+	rawObserverAuthorityIDs:    [#SafeID, ...#SafeID]
 })
 
 #S04PPFProjection: close({
 	schema: "s04.ppf-projection.v0"
 
-	projectionID:     #SafeID
-	projectionDigest: #Digest
-	realizationID:    #SafeID
+	projectionID:      #SafeID
+	projectionDigest:  #Digest
+	realizationID:     #SafeID
 	realizationDigest: #Digest
-	packageID:        #SafeID
-	packageDigest:    #Digest
+	packageID:         #SafeID
+	packageDigest:     #Digest
 
 	authorities: #AuthorityProjection
 	caseBindings: [BindingID=#SafeID]: #CaseProjectionBinding & {
@@ -145,10 +151,17 @@ package s04
 })
 
 #S04ConsumerProfileContract: close({
-	schema: "s04.consumer-profile-contract.v0"
+	schema:         "s04.consumer-profile-contract.v0"
 	contractID:     #SafeID
 	contractDigest: #Digest
 	realization:    #CueRealization
 	package:        #MinimalPPFPackage
-	projection:     #S04PPFProjection
+	projection: #S04PPFProjection & {
+		realizationID: realization.realizationID
+		packageID:     package.packageID
+		packageDigest: package.packageDigest
+		authorities: {
+			semanticAuthorityID: package.validator.semanticAuthorityID
+		}
+	}
 })
