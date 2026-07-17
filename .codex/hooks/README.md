@@ -1,33 +1,34 @@
 # CUEstrap supervisory hooks
 
-The repository hook recognizes two top-level action categories:
+The project hook recognizes two action categories and routes them through distinct
+workbook surfaces:
 
 ```text
 proposed action
-    ├── workbook-centric → workbook/code-mode transport remains direct
-    └── general          → closed Just recipe transport
+    ├── target-workbook action → existing Marimo/code-mode path remains direct
+    └── general shell/tool action → fresh disposable operation-controller workbook
 ```
 
 This is an experimental transport and anti-churn boundary. It is not issue #7's
 native CUE authority, a complete System B implementation, or a universal Codex
 interception boundary.
 
-## Workbook-centric actions
+## Target-workbook actions
 
-Workbook operations stay on their native path:
+These remain on the existing target-workbook path:
 
 - Marimo code-mode MCP calls;
 - constrained `code_mode_client.py` operations;
 - `workbook_cli.py` evaluation and probe operations;
-- the `marimo-listener` recipe.
+- the operator-facing `marimo-listener` recipe.
 
-The hook does not wrap these operations in another Just recipe. The workbook is
-the active substrate and canonical interactive experiment record.
+The target workbook is the active experiment substrate and canonical interactive
+iteration record. It does not supervise or authorize its own mutations.
 
 ## General actions
 
-Recognized atomic Bash actions are converted into a versioned, digest-bound
-recipe request and rewritten with the supported Codex shape:
+Recognized atomic Bash actions are rewritten with the supported Codex
+`PreToolUse` shape:
 
 ```json
 {
@@ -35,45 +36,69 @@ recipe request and rewritten with the supported Codex shape:
     "hookEventName": "PreToolUse",
     "permissionDecision": "allow",
     "updatedInput": {
-      "command": "just --justfile /repo/justfile hook-shell-read <payload>"
+      "command": "/repo/.venv/bin/python /repo/src/cue-workbook/operation_controller_cli.py --repository-root /repo --payload <closed-request>"
     }
   }
 }
 ```
 
-The recipe runner:
+The command starts one fresh Marimo runtime from
+`src/cue-workbook/operation-controller.py`. Its reactive graph exposes:
 
-1. decodes a closed Pydantic request;
-2. verifies the expected recipe, target identity, request digest, tool kind, and
-   repository-relative working directory;
-3. reclassifies the proposed operation against the closed vocabulary;
-4. rejects workbook-centric actions at the general recipe boundary;
-5. executes validated argv without a shell.
+```text
+closed request
+    → semantic revalidation
+    → bounded working directory
+    → pre-state projection
+    → one-use claim
+    → shell/tool effect
+    → post-state projection
+    → terminal receipt
+```
 
-Available recipe transports cover shell reads, Git reads and mutations,
-`apply_patch`, bounded workspace mutations, CUE/Python/Go evaluations, and Just
-introspection.
+The controller executes canonical argv with `shell=False`. The initial typed tool
+adapter supports `apply_patch`; an original `apply_patch` call is denied with the
+exact controller command because a Codex hook can replace tool input but cannot
+change the tool kind to Bash.
+
+General MCP operations without a typed controller adapter are denied explicitly.
+They are not silently treated as governed or translated into approximate shell
+commands.
 
 Compound, piped, redirected, substituted, expansion-dependent, malformed, and
-unknown Bash forms remain outside the recipe vocabulary.
+unknown Bash forms remain outside the controller vocabulary.
 
-## Non-Bash general tools
+## One-use effect transaction
 
-Codex can replace a tool's input but cannot change its tool kind. Therefore:
+Each controller request binds:
 
-- `apply_patch` is denied with the exact equivalent `hook-apply-patch` command
-  that can be re-issued through Bash;
-- general MCP calls are denied with the required recipe family so the operation
-  can be re-proposed through Bash;
-- Marimo code-mode MCP remains direct because it is workbook-centric.
+- session, turn, and operation identity;
+- proposed tool kind;
+- canonical target and request digest;
+- repository-relative working directory;
+- exact argv or typed tool input;
+- a bounded timeout.
 
-A canonical recipe invocation carries the original semantic request. The hook
-restores that proposed request for anti-churn evaluation and PostToolUse
-correlation while the effective transport remains the Just command.
+Before an effect, the controller creates an exclusive claim. A repeated reactive
+execution returns the existing receipt rather than executing again. A claim with
+no terminal receipt produces `claimed-without-receipt` and is never retried
+automatically.
 
-## State and evidence
+Durable controller records live under Git's private metadata directory:
 
-Local experimental state remains under Git's private metadata directory:
+```text
+$(git rev-parse --git-common-dir)/cuestrap-operation-controller/<operation-key>/
+├── request.json
+├── claim.json
+└── receipt.json
+```
+
+The request and receipt make the disposable workbook reconstructable. The
+reactive DAG is the current causal view, not the sole append-only authority.
+
+## Hook state and evidence
+
+The provisional anti-churn supervisor retains separate local state:
 
 ```text
 $(git rev-parse --git-common-dir)/cuestrap-tool-supervisor/
@@ -81,15 +106,37 @@ $(git rev-parse --git-common-dir)/cuestrap-tool-supervisor/
 └── events.jsonl
 ```
 
-The ledger is diagnostic and provisional. It does not replace the pinned Codex
-rollout JSONL required by issue #7. Unmatched post events remain tactically inert.
+This ledger remains diagnostic. It does not replace the pinned Codex rollout
+JSONL required by issue #7. Unmatched post events remain tactically inert, and
+successful observations do not trigger the provisional identical-retry denial.
 
-The repository entrypoint exposes only `hook` and read-only `status`; the
-controlled agent cannot invoke `set-scope` or `set-phase` through this CLI.
+A rewritten `PostToolUse` event is restored to the original semantic action before
+anti-churn evidence reduction, so controller transport details do not become the
+action identity.
 
-## Semantic boundary
+## Just boundary
 
-Python performs framing, routing, normalization, recipe revalidation, and local
-evidence correlation. The existing Python anti-churn predicates remain
-provisional. Issue #7 must later move the qualified tactical conclusion into the
-native CUE pattern and compose it with rollout continuity and parent authority.
+Just is no longer part of governed runtime execution. The `justfile` contains
+only operator/bootstrap commands:
+
+- `marimo-listener` opens the target-workbook code-mode service;
+- `operation-controller` opens the disposable controller template for inspection.
+
+No Just recipe owns admission, tactical conclusions, execution identity, or
+shell/tool effects.
+
+## Wire and authority boundary
+
+The repository hook emits only supported wire responses:
+
+- `allow` plus `updatedInput` for an admitted Bash-to-controller rewrite;
+- `deny` with an actionable reason for a required cross-tool reproposal or local
+  provisional denial;
+- no permission decision for direct or unclassified traffic;
+- diagnostic context without manufactured approval on adapter failure.
+
+Python currently performs framing, routing, semantic revalidation, one-use
+execution, and local evidence correlation. Existing Python anti-churn predicates
+remain provisional. Issue #7 must move the qualified tactical conclusion into the
+native CUE pattern and compose it with rollout continuity and exact parent
+authorization.
