@@ -271,6 +271,7 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             request=request,
             updated_input=updated,
             redirect_command=shlex.join(controller_argv),
+            semantic_event=_semantic_pre_event(event, request, repository_root),
         )
 
     if event.tool_name == "apply_patch":
