@@ -24,7 +24,10 @@ The target workbook is the active experiment substrate and canonical interactive
 
 ## General actions
 
-Recognized atomic Bash and `tool_exec` actions are rewritten with the supported Codex `PreToolUse` shape so the effective invocation starts a fresh Marimo runtime from `src/cue-workbook/operation-controller.py` through `operation_controller_cli.py`.
+Recognized atomic Bash and `tool_exec` actions are denied with the exact command
+that starts a fresh Marimo runtime from `src/cue-workbook/operation-controller.py`
+through `operation_controller_cli.py`. The agent must re-issue that command; the
+hook does not rewrite the original tool input.
 
 The controller's reactive graph exposes:
 
@@ -41,7 +44,8 @@ closed identity-bound request
 
 Bash input enters this path only when shell parsing and direct argv execution have identical meaning. Compound, piped, redirected, substituted, globbed, brace-expanded, expansion-dependent, malformed, and unknown Bash forms remain outside the controller vocabulary.
 
-`tool_exec` accepts a closed command-bearing input shape and is rewritten using the same field representation. Both transports reduce to one canonical argv semantic action before provisional evidence reduction.
+`tool_exec` accepts a closed command-bearing input shape. Both transports reduce
+to one canonical argv semantic action before provisional evidence reduction.
 
 The controller executes canonical argv with `shell=False`. The initial typed tool adapter supports `apply_patch`; an original `apply_patch` call is denied with the exact controller command because a Codex hook can replace tool input but cannot change the tool kind into Bash or `tool_exec`.
 
@@ -85,7 +89,23 @@ $(git rev-parse --git-common-dir)/cuestrap-tool-supervisor/
 
 This ledger remains diagnostic. It does not replace the pinned Codex rollout JSONL required by issue #7. Unmatched post events remain tactically inert, and successful observations do not trigger the provisional identical-retry denial.
 
-A rewritten `PostToolUse` event is restored to the canonical semantic action before anti-churn evidence reduction, so Bash versus `tool_exec` transport details do not become separate action identities.
+The host establishes the active supervisory scope when it launches Codex. Set
+`CUESTRAP_BOOTSTRAP_SCOPE` to one closed `Scope` JSON document containing the
+activity, surface, owned paths, and allowed targets. For example:
+
+```text
+{"activity":"implement","surface":"workbook","ownedPaths":["src/cue-workbook/**"],"allowedTargets":["workspace.apply-patch","code-mode.apply-cell-transaction"]}
+```
+
+Each hook invocation reconciles durable state to this parent-process value and
+records a control transition when it changes. When the variable is absent, the
+legacy `CUESTRAP_BOOTSTRAP_PHASE` selects a read-only default scope; that default
+has no owned mutation paths. Tool calls cannot update the hook parent's launch
+environment, so this restores bounded mutation without an in-band scope command.
+
+A controller-workbook `PostToolUse` event is restored to the canonical semantic
+action before anti-churn evidence reduction, so Bash versus `tool_exec` transport
+details do not become separate action identities.
 
 ## Just boundary
 
@@ -100,8 +120,7 @@ No Just recipe owns admission, tactical conclusions, execution identity, or shel
 
 The repository hook emits only supported wire responses:
 
-- `allow` plus `updatedInput` for an admitted Bash- or `tool_exec`-to-controller rewrite;
-- `deny` with an actionable reason for a required cross-tool reproposal or local provisional denial;
+- `deny` with an actionable exact controller command for a required workbook reproposal or local provisional denial;
 - no permission decision for direct or unclassified traffic;
 - diagnostic context without manufactured approval on adapter failure.
 

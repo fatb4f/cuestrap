@@ -245,6 +245,7 @@ def _run_argv(request: ControllerRequest, cwd: Path) -> tuple[int, str, str, str
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            errors="replace",
             timeout=request.timeout_seconds,
         )
     except subprocess.TimeoutExpired as error:
@@ -275,6 +276,7 @@ def _run_apply_patch(request: ControllerRequest, cwd: Path) -> tuple[int, str, s
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            errors="replace",
             timeout=request.timeout_seconds,
         )
     except subprocess.TimeoutExpired as error:

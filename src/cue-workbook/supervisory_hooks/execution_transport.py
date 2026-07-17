@@ -17,7 +17,6 @@ from .policy import (
     _READ_COMMANDS,
     _WORKSPACE_MUTATIONS,
     _canonical_operation,
-    _contains_sequence,
     _normalize_paths,
     _shell_target_paths,
 )
@@ -142,18 +141,6 @@ def parse_execution_input(tool_name: str, tool_input: object) -> ExecutionInvoca
         command_is_string=is_string,
         original_input=dict(tool_input),
     )
-
-
-def render_execution_input(
-    invocation: ExecutionInvocation,
-    argv: tuple[str, ...],
-) -> dict[str, object]:
-    updated = dict(invocation.original_input)
-    updated[invocation.command_field] = shlex.join(argv) if invocation.command_is_string else list(argv)
-    for field in _COMMAND_FIELDS:
-        if field != invocation.command_field:
-            updated.pop(field, None)
-    return updated
 
 
 def _lexical_executable_path(executable: str, cwd: Path) -> Path | None:
@@ -488,25 +475,43 @@ def classify_execution_argv(
             fanout=fanout,
         )
 
-    evaluation: tuple[TargetID, tuple[str, ...]] | None = None
-    for target, sequence in (
-        ("evaluation.cue", ("cue", "vet")),
-        ("evaluation.cue", ("cue", "eval")),
-        ("evaluation.cue", ("cue", "export")),
-        ("evaluation.python", ("python", "-m", "unittest")),
-        ("evaluation.python", ("python", "-m", "pytest")),
-        ("evaluation.python", ("python3", "-m", "unittest")),
-        ("evaluation.go", ("go", "test")),
+    evaluation_argv = argv
+    if Path(argv[0]).name == "uv":
+        if repository_root is None or len(argv) < 8:
+            return Classification(recognized=False)
+        project = _resolved_argument_path(argv[3], working_directory or repository_root)
+        if (
+            argv[1:3] != ("run", "--project")
+            or project != repository_root.resolve(strict=True)
+            or argv[4:7] != ("--locked", "--exact", "--")
+        ):
+            return Classification(recognized=False)
+        evaluation_argv = argv[7:]
+
+    executable = Path(evaluation_argv[0]).name if evaluation_argv else ""
+    evaluation: TargetID | None = None
+    if executable == "cue" and evaluation_argv[1:2] in {
+        ("vet",),
+        ("eval",),
+        ("export",),
+    }:
+        evaluation = "evaluation.cue"
+    elif (
+        executable in {"python", "python3"}
+        and evaluation_argv[1:3] == ("-m", "unittest")
+    ) or (
+        executable == "python"
+        and evaluation_argv[1:3] == ("-m", "pytest")
     ):
-        if _contains_sequence(argv, sequence):
-            evaluation = (target, sequence)
-            break
+        evaluation = "evaluation.python"
+    elif executable == "go" and evaluation_argv[1:2] == ("test",):
+        evaluation = "evaluation.go"
+
     if evaluation is not None:
-        target, _ = evaluation
         return _canonical_operation(
-            target,
+            evaluation,
             "evaluation",
-            {"target": target, "tokens": argv},
+            {"target": evaluation, "tokens": argv},
             observation_channel="native-evaluation",
         )
 

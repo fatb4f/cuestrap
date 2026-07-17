@@ -371,6 +371,31 @@ class Supervisor:
             )
             return transaction.state
 
+    def ensure_scope(self, scope: Scope, *, reason: str) -> SupervisorState:
+        """Reconcile durable state to an out-of-band host-configured scope."""
+        if not reason.strip():
+            raise ValueError("scope transition reason must be nonempty")
+        with self.ledger.transaction() as transaction:
+            state = transaction.state
+            if state.scope == scope:
+                return state
+            previous = state.scope
+            transaction.state = state.model_copy(update={"scope": scope})
+            sequence = transaction.next_sequence()
+            transaction.append(
+                ControlTransitionRecord(
+                    sequence=sequence,
+                    recorded_at_nanoseconds=time.time_ns(),
+                    operation_id=f"host-scope-{sequence}",
+                    run_id=state.run_id,
+                    attempt_id=state.attempt_id,
+                    previous_scope=previous,
+                    scope=scope,
+                    reason=reason,
+                )
+            )
+            return transaction.state
+
     def set_phase(self, activity: Activity, *, reason: str) -> SupervisorState:
         """Compatibility transition; host-only callers may supply a default scope."""
         return self.set_scope(default_scope(activity), reason=reason)

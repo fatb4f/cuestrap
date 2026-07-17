@@ -12,7 +12,7 @@ from typing import get_args
 from pydantic import ValidationError
 
 from .ledger import DurableLedger
-from .models import Activity, PostToolUseInput, PreToolUseInput
+from .models import Activity, PostToolUseInput, PreToolUseInput, Scope, default_scope
 from .routing import plan_pretool_route, render_pretool_response, restore_posttool_event
 from .supervisor import Supervisor
 
@@ -36,11 +36,24 @@ def _git_private_directory(repository_root: Path) -> Path:
 
 
 def _supervisor(repository_root: Path) -> Supervisor:
-    initial_activity = os.environ.get("CUESTRAP_BOOTSTRAP_PHASE", "inspect")
-    if initial_activity not in get_args(Activity):
-        raise ValueError(f"invalid initial activity: {initial_activity!r}")
-    ledger = DurableLedger(_git_private_directory(repository_root), initial_activity=initial_activity)
-    return Supervisor(repository_root, ledger)
+    configured = os.environ.get("CUESTRAP_BOOTSTRAP_SCOPE")
+    if configured is None:
+        initial_activity = os.environ.get("CUESTRAP_BOOTSTRAP_PHASE", "inspect")
+        if initial_activity not in get_args(Activity):
+            raise ValueError(f"invalid initial activity: {initial_activity!r}")
+        scope = default_scope(initial_activity)
+        reason = "host-configured default bootstrap scope"
+    else:
+        scope = Scope.model_validate_json(configured)
+        initial_activity = scope.activity
+        reason = "host-configured explicit bootstrap scope"
+    ledger = DurableLedger(
+        _git_private_directory(repository_root),
+        initial_activity=initial_activity,
+    )
+    supervisor = Supervisor(repository_root, ledger)
+    supervisor.ensure_scope(scope, reason=reason)
+    return supervisor
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -66,8 +79,8 @@ def _protocol_failure(event_name: object, reason: str) -> dict[str, object]:
 def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
     args = _parser().parse_args(argv)
     repository_root = args.repository_root.resolve(strict=True)
-    supervisor = _supervisor(repository_root)
     if args.command == "status":
+        supervisor = _supervisor(repository_root)
         print(json.dumps(supervisor.status(), sort_keys=True, indent=2))
         return 0
 
@@ -77,6 +90,7 @@ def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
         if not isinstance(raw, dict):
             raise ValueError("hook input must be a JSON object")
         event_name = raw.get("hook_event_name")
+        supervisor = _supervisor(repository_root)
         if event_name == "PreToolUse":
             event = PreToolUseInput.model_validate(raw)
             if wire_safe:

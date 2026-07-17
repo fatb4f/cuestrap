@@ -168,11 +168,6 @@ def _tokens(command: str) -> tuple[str, ...] | None:
         return None
 
 
-def _contains_sequence(tokens: tuple[str, ...], sequence: tuple[str, ...]) -> bool:
-    width = len(sequence)
-    return any(tokens[index : index + width] == sequence for index in range(len(tokens) - width + 1))
-
-
 def _shell_target_paths(tokens: tuple[str, ...]) -> tuple[str, ...]:
     candidates = [token for token in tokens[1:] if token and not token.startswith("-")]
     return tuple(candidates)
@@ -325,25 +320,46 @@ def classify_tool(
             fanout=fanout,
         )
 
-    evaluation: tuple[TargetID, tuple[str, ...]] | None = None
-    for target, sequence in (
-        ("evaluation.cue", ("cue", "vet")),
-        ("evaluation.cue", ("cue", "eval")),
-        ("evaluation.cue", ("cue", "export")),
-        ("evaluation.python", ("python", "-m", "unittest")),
-        ("evaluation.python", ("python", "-m", "pytest")),
-        ("evaluation.python", ("python3", "-m", "unittest")),
-        ("evaluation.go", ("go", "test")),
+    evaluation_tokens = tokens
+    if executable == "uv":
+        if (
+            len(tokens) < 8
+            or tokens[1:3] != ("run", "--project")
+            or tokens[4:7] != ("--locked", "--exact", "--")
+        ):
+            return _unknown()
+        if repository_root is not None:
+            project = Path(tokens[3])
+            if not project.is_absolute():
+                project = repository_root / project
+            if project.resolve(strict=False) != repository_root.resolve(strict=True):
+                return _unknown()
+        evaluation_tokens = tokens[7:]
+
+    evaluation_executable = Path(evaluation_tokens[0]).name if evaluation_tokens else ""
+    evaluation: TargetID | None = None
+    if evaluation_executable == "cue" and evaluation_tokens[1:2] in {
+        ("vet",),
+        ("eval",),
+        ("export",),
+    }:
+        evaluation = "evaluation.cue"
+    elif (
+        evaluation_executable in {"python", "python3"}
+        and evaluation_tokens[1:3] == ("-m", "unittest")
+    ) or (
+        evaluation_executable == "python"
+        and evaluation_tokens[1:3] == ("-m", "pytest")
     ):
-        if _contains_sequence(tokens, sequence):
-            evaluation = (target, sequence)
-            break
+        evaluation = "evaluation.python"
+    elif evaluation_executable == "go" and evaluation_tokens[1:2] == ("test",):
+        evaluation = "evaluation.go"
+
     if evaluation is not None:
-        target, _ = evaluation
         return _canonical_operation(
-            target,
+            evaluation,
             "evaluation",
-            {"target": target, "tokens": tokens},
+            {"target": evaluation, "tokens": tokens},
             observation_channel="native-evaluation",
         )
     if "workbook_cli.py" in command and any(

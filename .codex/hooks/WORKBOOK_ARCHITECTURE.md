@@ -50,7 +50,12 @@ closed identity-bound request
     → terminal receipt
 ```
 
-Both Bash and `tool_exec` are rewritten to a fresh Marimo runtime. Bash is admitted only when shell parsing and direct argv execution have identical meaning. Globs, brace expansion, substitutions, pipelines, redirections, compound syntax, and other expansion-dependent forms remain outside the controller vocabulary instead of being reinterpreted as literal argv.
+Both Bash and `tool_exec` are redirected to a fresh Marimo runtime by denying the
+original action with an exact controller-workbook command. Bash is admitted only
+when shell parsing and direct argv execution have identical meaning. Globs, brace
+expansion, substitutions, pipelines, redirections, compound syntax, and other
+expansion-dependent forms remain outside the controller vocabulary instead of
+being reinterpreted as literal argv.
 
 Every request field—including session, turn, operation, working directory, timeout, target, semantic request digest, argv, and typed input—is covered by `requestIdentity` and revalidated before execution.
 

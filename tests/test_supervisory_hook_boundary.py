@@ -25,7 +25,11 @@ from bootstrap_client.binding import (  # noqa: E402
 from bootstrap_client.generated.models import digest_json, digest_text  # noqa: E402
 from bootstrap_client.mcp_adapter import AdapterResult  # noqa: E402
 from supervisory_hooks.cli import main as hook_cli_main  # noqa: E402
-from supervisory_hooks.controller import execute_controller_request  # noqa: E402
+from supervisory_hooks.controller import (  # noqa: E402
+    ControllerRequest,
+    execute_controller_request,
+)
+from supervisory_hooks.execution_transport import classify_execution_argv  # noqa: E402
 from supervisory_hooks.ledger import DurableLedger  # noqa: E402
 from supervisory_hooks.models import PostToolUseInput, PreToolUseInput  # noqa: E402
 from supervisory_hooks.policy import project_evidence  # noqa: E402
@@ -77,9 +81,16 @@ def _post(pre: PreToolUseInput, response: object, *, tool_input: object | None =
     return PostToolUseInput.model_validate(value)
 
 
-def _run_wire(event: PreToolUseInput, data_dir: Path) -> dict[str, object]:
+def _run_wire(
+    event: PreToolUseInput,
+    data_dir: Path,
+    *,
+    environment: dict[str, str] | None = None,
+) -> dict[str, object]:
+    hook_environment = {"CUESTRAP_HOOK_DATA_DIR": str(data_dir)}
+    hook_environment.update(environment or {})
     with (
-        patch.dict(os.environ, {"CUESTRAP_HOOK_DATA_DIR": str(data_dir)}),
+        patch.dict(os.environ, hook_environment),
         patch("sys.stdin", io.StringIO(event.model_dump_json())),
         patch("sys.stdout", new_callable=io.StringIO) as stdout,
     ):
@@ -207,12 +218,14 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         argv.extend((operation, str(self.requests[operation].relative_to(ROOT))))
         return tuple(argv)
 
-    def test_general_bash_is_rewritten_to_disposable_controller_workbook(self) -> None:
+    def test_general_bash_is_redirected_to_disposable_controller_workbook(self) -> None:
         response = _run_wire(_pre(), self.data_dir / "wire")
         specific = response["hookSpecificOutput"]
-        self.assertEqual(specific["permissionDecision"], "allow")
-        updated = specific["updatedInput"]
-        tokens = strict_shell_tokens(updated["command"])
+        self.assertEqual(specific["permissionDecision"], "deny")
+        route = plan_pretool_route(_pre(), ROOT)
+        self.assertEqual(route.behavior, "redirect")
+        assert route.redirect_command is not None
+        tokens = strict_shell_tokens(route.redirect_command)
         self.assertIsNotNone(tokens)
         assert tokens is not None
         self.assertEqual(tokens[0], str(ROOT / ".venv/bin/python"))
@@ -224,17 +237,106 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(request.operation_id, "tool-1")
         self.assertEqual(request.working_directory, ".")
 
-    def test_tool_exec_is_rewritten_to_disposable_controller_workbook(self) -> None:
+    def test_evaluation_recognition_requires_an_exact_launcher_prefix(self) -> None:
+        admitted = (
+            "python -m unittest tests.test_supervisory_hooks",
+            "uv run --project . --locked --exact -- python -m unittest",
+        )
+        for command in admitted:
+            with self.subTest(command=command):
+                route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
+                self.assertEqual(
+                    (route.category, route.behavior, route.target_id),
+                    ("general", "redirect", "evaluation.python"),
+                )
+
+        smuggled = _pre(
+            tool_input={
+                "command": "python -c 'print(1)' python -m pytest",
+            }
+        )
+        route = plan_pretool_route(smuggled, ROOT)
+        self.assertEqual((route.category, route.behavior), ("unclassified", "neutral"))
+
+    def test_host_configured_scope_authorizes_exact_owned_patch(self) -> None:
+        patch_event = _pre(
+            "apply_patch",
+            {
+                "command": (
+                    "*** Begin Patch\n"
+                    "*** Update File: README.md\n"
+                    "@@\n"
+                    "-old\n"
+                    "+new\n"
+                    "*** End Patch"
+                )
+            },
+        )
+        redirect = plan_pretool_route(patch_event, ROOT)
+        self.assertEqual(redirect.behavior, "redirect")
+        assert redirect.redirect_command is not None
+        controller_event = _pre(
+            "Bash",
+            {"command": redirect.redirect_command},
+        )
+        scope = {
+            "activity": "implement",
+            "surface": "workbook",
+            "ownedPaths": ["README.md"],
+            "allowedTargets": ["workspace.apply-patch"],
+        }
+        data_dir = self.data_dir / "configured-scope"
+        response = _run_wire(
+            controller_event,
+            data_dir,
+            environment={"CUESTRAP_BOOTSTRAP_SCOPE": json.dumps(scope)},
+        )
+        self.assertEqual(response, {})
+        self.assertEqual(DurableLedger(data_dir).read_state().scope.owned_paths, ("README.md",))
+
+    def test_controller_records_non_utf8_output(self) -> None:
+        binary = self.data_dir / "binary-output"
+        binary.write_bytes(b"\xff\xfe")
+        argv = ("head", "-c", "2", str(binary))
+        operation = classify_execution_argv(
+            argv,
+            repository_root=ROOT,
+            working_directory=ROOT,
+        ).operation
+        assert operation is not None
+        request = ControllerRequest.build(
+            operationID="binary-output",
+            sessionID="session-1",
+            turnID="turn-1",
+            targetID=operation.target_id,
+            requestDigest=operation.request_digest,
+            proposedToolName="Bash",
+            workingDirectory=".",
+            argv=argv,
+        )
+        receipt = execute_controller_request(
+            request,
+            ROOT,
+            self.data_dir / "binary-controller",
+        )
+        self.assertEqual(receipt.status, "completed")
+        self.assertIn("\ufffd", receipt.stdout)
+        self.assertIsNotNone(receipt.receipt_path)
+        assert receipt.receipt_path is not None
+        self.assertTrue(Path(receipt.receipt_path).is_file())
+
+    def test_tool_exec_is_redirected_to_disposable_controller_workbook(self) -> None:
         event = _pre(
             "tool_exec",
             {"argv": ["git", "status"], "yield_time_ms": 1000},
         )
         response = _run_wire(event, self.data_dir / "tool-exec")
-        specific = response["hookSpecificOutput"]
-        self.assertEqual(specific["permissionDecision"], "allow")
-        updated = specific["updatedInput"]
-        self.assertEqual(updated["yield_time_ms"], 1000)
-        controller_argv = tuple(updated["argv"])
+        self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
+        route = plan_pretool_route(event, ROOT)
+        self.assertEqual(route.behavior, "redirect")
+        assert route.redirect_command is not None
+        controller_argv = strict_shell_tokens(route.redirect_command)
+        assert controller_argv is not None
         self.assertEqual(controller_argv[0], str(ROOT / ".venv/bin/python"))
         request = decode_controller_request(controller_argv[-1])
         self.assertEqual(request.proposed_tool_name, "tool_exec")
@@ -437,7 +539,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
-                self.assertEqual((route.category, route.behavior), ("general", "rewrite"))
+                self.assertEqual((route.category, route.behavior), ("general", "redirect"))
                 self.assertEqual(route.target_id, "workspace.mutation")
 
     def test_workbook_adapter_basenames_outside_canonical_paths_are_not_direct(self) -> None:
@@ -508,11 +610,18 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(controller_route.semantic_event.tool_name, "apply_patch")
         self.assertEqual(controller_route.semantic_event.tool_input, patch_event.tool_input)
 
-    def test_rewritten_post_restores_original_semantic_action(self) -> None:
+    def test_redirected_post_restores_original_semantic_action(self) -> None:
         event = _pre()
         route = plan_pretool_route(event, ROOT)
-        self.supervisor.handle_pre(event)
-        effective_post = _post(event, {"exit_code": 0}, tool_input=route.updated_input)
+        assert route.redirect_command is not None
+        controller_event = _pre(
+            tool_input={"command": route.redirect_command},
+            tool_use_id="controller-1",
+        )
+        controller_route = plan_pretool_route(controller_event, ROOT)
+        assert controller_route.semantic_event is not None
+        self.supervisor.handle_pre(controller_route.semantic_event)
+        effective_post = _post(controller_event, {"exit_code": 0})
         restored = restore_posttool_event(effective_post, ROOT)
         self.assertEqual(restored.tool_name, "Bash")
         self.assertEqual(restored.tool_input, {"command": "rg hook src"})
@@ -522,10 +631,15 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(projection.observations[0].target_id, "shell.read")
         self.assertEqual(self.ledger.read_state().pending, {})
 
-    def test_rewritten_tool_exec_post_restores_canonical_action(self) -> None:
+    def test_redirected_tool_exec_post_restores_canonical_action(self) -> None:
         event = _pre("tool_exec", {"argv": ["git", "status"], "yield-time_ms": 1000})
         route = plan_pretool_route(event, ROOT)
-        effective_post = _post(event, {"exit_code": 0}, tool_input=route.updated_input)
+        assert route.redirect_command is not None
+        controller_event = _pre(
+            tool_input={"command": route.redirect_command},
+            tool_use_id="controller-1",
+        )
+        effective_post = _post(controller_event, {"exit_code": 0})
         restored = restore_posttool_event(effective_post, ROOT)
         self.assertEqual(restored.tool_name, "Bash")
         self.assertEqual(restored.tool_input, {"command": "git status"})
@@ -553,6 +667,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             stdout=-1,
             stderr=-1,
             text=True,
+            errors="replace",
             timeout=120,
         )
         self.assertEqual(len(tuple(state_root.glob("*/claim.json"))), 1)
@@ -570,7 +685,8 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             "turn_id": "other-turn",
             "operation_id": "other-operation",
         }
-        tokens = strict_shell_tokens(route.updated_input["command"])
+        assert route.redirect_command is not None
+        tokens = strict_shell_tokens(route.redirect_command)
         assert tokens is not None
         for field, value in mutations.items():
             with self.subTest(field=field):
@@ -606,7 +722,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         quoted = "rg '(foo)' src"
         self.assertEqual(strict_shell_tokens(quoted), ("rg", "(foo)", "src"))
         route = plan_pretool_route(_pre(tool_input={"command": quoted}), ROOT)
-        self.assertEqual((route.category, route.behavior), ("general", "rewrite"))
+        self.assertEqual((route.category, route.behavior), ("general", "redirect"))
 
     def test_compound_shell_remains_outside_controller_vocabulary(self) -> None:
         event = _pre(tool_input={"command": "rg hook src | tee output.txt"})

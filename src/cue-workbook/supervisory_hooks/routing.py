@@ -15,14 +15,13 @@ from .execution_transport import (
     classify_execution_argv,
     is_exact_workbook_argv,
     parse_execution_input,
-    render_execution_input,
     strict_shell_tokens,
 )
 from .models import PostToolUseInput, PreToolUseInput
 from .policy import classify_tool
 
 ActionCategory = Literal["workbook-centric", "general", "unclassified"]
-RouteBehavior = Literal["direct", "rewrite", "redirect", "neutral"]
+RouteBehavior = Literal["direct", "redirect", "neutral"]
 
 WORKBOOK_MCP_PREFIX = "mcp__marimo_code_mode__"
 _CONTROLLER_CLI = "src/cue-workbook/operation_controller_cli.py"
@@ -35,7 +34,6 @@ class RoutePlan:
     behavior: RouteBehavior
     target_id: str | None = None
     request: ControllerRequest | None = None
-    updated_input: dict[str, object] | None = None
     redirect_command: str | None = None
     reason: str | None = None
     semantic_event: PreToolUseInput | None = None
@@ -293,14 +291,17 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             working_directory=working_directory,
         )
         controller_argv = _controller_tokens(repository_root, request)
-        updated = render_execution_input(invocation, controller_argv)
+        command = shlex.join(controller_argv)
         return RoutePlan(
             category="general",
-            behavior="rewrite",
+            behavior="redirect",
             target_id=operation.target_id,
             request=request,
-            updated_input=updated,
-            redirect_command=shlex.join(controller_argv),
+            redirect_command=command,
+            reason=(
+                "re-issue the exact admitted action through the disposable "
+                f"operation-controller workbook: {command}"
+            ),
             semantic_event=_semantic_pre_event(event, request, repository_root),
         )
 
@@ -347,20 +348,6 @@ def render_pretool_response(
     specific = internal_response.get("hookSpecificOutput")
     if isinstance(specific, dict) and specific.get("permissionDecision") == "deny":
         return internal_response
-
-    if plan.behavior == "rewrite":
-        assert plan.updated_input is not None
-        return {
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "updatedInput": plan.updated_input,
-                "additionalContext": (
-                    f"Routed general action {plan.target_id} through a disposable "
-                    "operation-controller workbook."
-                ),
-            }
-        }
 
     if plan.behavior == "redirect":
         reason = plan.reason or "general action requires controller-workbook transport"
