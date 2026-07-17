@@ -1,4 +1,4 @@
-"""Transport routing between workbook actions and closed Just recipes."""
+"""Hook routing between target-workbook actions and a disposable controller workbook."""
 from __future__ import annotations
 
 import base64
@@ -9,76 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from .models import Digest, NonEmpty, PostToolUseInput, PreToolUseInput, TargetID
+from .controller import ControllerRequest, WORKBOOK_TARGETS, semantic_tool_input
+from .models import PostToolUseInput, PreToolUseInput
 from .policy import classify_tool
 
 ActionCategory = Literal["workbook-centric", "general", "unclassified"]
 RouteBehavior = Literal["direct", "rewrite", "redirect", "neutral"]
 
-RECIPE_SCHEMA = "cuestrap.just-recipe-request/v0"
 WORKBOOK_MCP_PREFIX = "mcp__marimo_code_mode__"
-WORKBOOK_TARGETS = frozenset(
-    {
-        "code-mode.resolve-session",
-        "code-mode.capture-state",
-        "code-mode.run-focused-probe",
-        "code-mode.apply-cell-transaction",
-        "evaluation.workbook",
-    }
-)
-RECIPE_BY_TARGET: dict[str, str] = {
-    "shell.read": "hook-shell-read",
-    "git.read": "hook-git-read",
-    "git.mutation": "hook-git-mutation",
-    "workspace.apply-patch": "hook-apply-patch",
-    "workspace.mutation": "hook-workspace-mutation",
-    "evaluation.cue": "hook-evaluate-cue",
-    "evaluation.python": "hook-evaluate-python",
-    "evaluation.go": "hook-evaluate-go",
-    "just.list": "hook-just-introspection",
-    "just.summary": "hook-just-introspection",
-    "just.dump": "hook-just-introspection",
-    "just.check": "hook-just-introspection",
-}
+_CONTROLLER_CLI = "src/cue-workbook/operation_controller_cli.py"
 _SHELL_PUNCTUATION = frozenset(";&|<>")
 _UNEXPANDED_SHELL_MARKERS = ("`", "$(", "${", "<(", ">(")
-
-
-class RecipeRequest(BaseModel):
-    """Closed request consumed by one Just recipe and revalidated before execution."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
-
-    schema_version: Literal["cuestrap.just-recipe-request/v0"] = Field(
-        default=RECIPE_SCHEMA,
-        alias="schema",
-    )
-    recipe_id: NonEmpty = Field(alias="recipeID")
-    target_id: TargetID = Field(alias="targetID")
-    request_digest: Digest = Field(alias="requestDigest")
-    proposed_tool_name: NonEmpty = Field(alias="proposedToolName")
-    working_directory: str = Field(alias="workingDirectory")
-    argv: tuple[NonEmpty, ...] | None = None
-    tool_input: object | None = Field(default=None, alias="toolInput")
-
-    @model_validator(mode="after")
-    def validate_shape(self) -> "RecipeRequest":
-        path = Path(self.working_directory)
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError("working directory must be repository-relative")
-        if self.proposed_tool_name.casefold() == "bash":
-            if not self.argv or self.tool_input is not None:
-                raise ValueError("Bash recipe requests require argv only")
-        elif self.proposed_tool_name == "apply_patch":
-            if self.argv is not None or not isinstance(self.tool_input, dict):
-                raise ValueError("apply_patch recipe requests require toolInput only")
-            if not isinstance(self.tool_input.get("command"), str):
-                raise ValueError("apply_patch toolInput requires command")
-        else:
-            raise ValueError("unsupported recipe tool")
-        return self
 
 
 @dataclass(frozen=True)
@@ -86,8 +27,7 @@ class RoutePlan:
     category: ActionCategory
     behavior: RouteBehavior
     target_id: str | None = None
-    recipe_id: str | None = None
-    request: RecipeRequest | None = None
+    request: ControllerRequest | None = None
     updated_input: dict[str, object] | None = None
     redirect_command: str | None = None
     reason: str | None = None
@@ -114,16 +54,15 @@ def strict_shell_tokens(command: str) -> tuple[str, ...] | None:
     return tokens
 
 
-def encode_recipe_request(request: RecipeRequest) -> str:
+def encode_controller_request(request: ControllerRequest) -> str:
     raw = request.model_dump_json(by_alias=True, exclude_none=True).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def decode_recipe_request(payload: str) -> RecipeRequest:
+def decode_controller_request(payload: str) -> ControllerRequest:
     padding = "=" * (-len(payload) % 4)
     raw = base64.urlsafe_b64decode((payload + padding).encode())
-    value = json.loads(raw)
-    return RecipeRequest.model_validate(value)
+    return ControllerRequest.model_validate(json.loads(raw))
 
 
 def _relative_working_directory(repository_root: Path, cwd: str) -> str | None:
@@ -136,53 +75,46 @@ def _relative_working_directory(repository_root: Path, cwd: str) -> str | None:
     return relative.as_posix() or "."
 
 
-def _recipe_command(repository_root: Path, recipe_id: str, request: RecipeRequest) -> str:
+def _controller_command(repository_root: Path, request: ControllerRequest) -> str:
+    root = repository_root.resolve()
     return shlex.join(
         (
-            "just",
-            "--justfile",
-            str(repository_root.resolve() / "justfile"),
-            recipe_id,
-            encode_recipe_request(request),
+            str(root / ".venv/bin/python"),
+            str(root / _CONTROLLER_CLI),
+            "--repository-root",
+            str(root),
+            "--payload",
+            encode_controller_request(request),
         )
     )
 
 
-def _request_from_recipe_tokens(
+def _request_from_controller_tokens(
     tokens: tuple[str, ...],
     repository_root: Path,
-) -> RecipeRequest | None:
-    if len(tokens) != 5 or Path(tokens[0]).name != "just":
-        return None
-    if tokens[1] != "--justfile":
-        return None
-    expected_justfile = (repository_root.resolve() / "justfile").resolve()
-    if Path(tokens[2]).resolve(strict=False) != expected_justfile:
-        return None
-    recipe_id, payload = tokens[3], tokens[4]
-    if recipe_id not in frozenset(RECIPE_BY_TARGET.values()):
+) -> ControllerRequest | None:
+    root = repository_root.resolve()
+    expected_prefix = (
+        str(root / ".venv/bin/python"),
+        str(root / _CONTROLLER_CLI),
+        "--repository-root",
+        str(root),
+        "--payload",
+    )
+    if len(tokens) != len(expected_prefix) + 1 or tokens[: len(expected_prefix)] != expected_prefix:
         return None
     try:
-        request = decode_recipe_request(payload)
+        return decode_controller_request(tokens[-1])
     except (ValueError, TypeError, json.JSONDecodeError, binascii.Error):
         return None
-    if request.recipe_id != recipe_id or RECIPE_BY_TARGET.get(request.target_id) != recipe_id:
-        return None
-    return request
 
 
 def _semantic_pre_event(
     wire_event: PreToolUseInput,
-    request: RecipeRequest,
+    request: ControllerRequest,
     repository_root: Path,
 ) -> PreToolUseInput | None:
-    if request.proposed_tool_name.casefold() == "bash":
-        assert request.argv is not None
-        tool_name = "Bash"
-        tool_input: object = {"command": shlex.join(request.argv)}
-    else:
-        tool_name = request.proposed_tool_name
-        tool_input = request.tool_input
+    tool_name, tool_input = semantic_tool_input(request)
     classification = classify_tool(tool_name, tool_input, repository_root=repository_root)
     if not classification.recognized or classification.operation is None:
         return None
@@ -203,7 +135,7 @@ def restore_posttool_event(
     event: PostToolUseInput,
     repository_root: Path,
 ) -> PostToolUseInput:
-    """Restore the proposed semantic action from a canonical Just invocation."""
+    """Restore the proposed semantic action from a controller-workbook invocation."""
     if event.tool_name.casefold() != "bash" or not isinstance(event.tool_input, dict):
         return event
     command = event.tool_input.get("command", event.tool_input.get("cmd"))
@@ -212,7 +144,7 @@ def restore_posttool_event(
     tokens = strict_shell_tokens(command)
     if tokens is None:
         return event
-    request = _request_from_recipe_tokens(tokens, repository_root)
+    request = _request_from_controller_tokens(tokens, repository_root)
     if request is None:
         return event
     synthetic_value = event.model_dump(mode="json", exclude={"tool_response"})
@@ -230,17 +162,25 @@ def restore_posttool_event(
     )
 
 
-def _is_workbook_just(tokens: tuple[str, ...]) -> bool:
-    return Path(tokens[0]).name == "just" and "marimo-listener" in tokens[1:]
+def _is_workbook_action(event: PreToolUseInput, tokens: tuple[str, ...] | None) -> bool:
+    lowered = event.tool_name.casefold()
+    if lowered.startswith(WORKBOOK_MCP_PREFIX):
+        return True
+    if lowered != "bash" or tokens is None:
+        return False
+    command = " ".join(tokens)
+    return (
+        "code_mode_client.py" in command
+        or "workbook_cli.py" in command
+        or (Path(tokens[0]).name == "just" and "marimo-listener" in tokens[1:])
+    )
 
 
 def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePlan:
-    """Classify one proposed action and select direct or Just-backed transport."""
+    """Select target-workbook direct transport or disposable-controller transport."""
     lowered = event.tool_name.casefold()
-    if lowered.startswith(WORKBOOK_MCP_PREFIX):
-        return RoutePlan(category="workbook-centric", behavior="direct")
-
     tokens: tuple[str, ...] | None = None
+
     if lowered == "bash" and isinstance(event.tool_input, dict):
         command = event.tool_input.get("command", event.tool_input.get("cmd"))
         if not isinstance(command, str):
@@ -250,55 +190,44 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             return RoutePlan(
                 category="unclassified",
                 behavior="neutral",
-                reason="compound or expansion-dependent Bash is outside the closed recipe vocabulary",
+                reason="compound or expansion-dependent Bash is outside the controller vocabulary",
             )
-        if _is_workbook_just(tokens):
+        if _is_workbook_action(event, tokens):
             return RoutePlan(category="workbook-centric", behavior="direct")
-        request = _request_from_recipe_tokens(tokens, repository_root)
+        request = _request_from_controller_tokens(tokens, repository_root)
         if request is not None:
             semantic_event = _semantic_pre_event(event, request, repository_root)
             if semantic_event is None:
                 return RoutePlan(
                     category="general",
                     behavior="redirect",
-                    reason="canonical recipe payload failed semantic revalidation",
+                    reason="controller payload failed semantic revalidation",
                 )
             return RoutePlan(
                 category="general",
                 behavior="direct",
                 target_id=request.target_id,
-                recipe_id=request.recipe_id,
                 request=request,
                 semantic_event=semantic_event,
             )
+
+    if _is_workbook_action(event, tokens):
+        return RoutePlan(category="workbook-centric", behavior="direct")
 
     classification = classify_tool(
         event.tool_name,
         event.tool_input,
         repository_root=repository_root,
     )
-    if not classification.recognized:
+    if not classification.recognized or classification.operation is None:
         return RoutePlan(category="unclassified", behavior="neutral")
 
     operation = classification.operation
-    assert operation is not None
     if operation.target_id in WORKBOOK_TARGETS:
         return RoutePlan(
             category="workbook-centric",
             behavior="direct",
             target_id=operation.target_id,
-        )
-
-    recipe_id = RECIPE_BY_TARGET.get(operation.target_id)
-    if recipe_id is None:
-        return RoutePlan(
-            category="general",
-            behavior="redirect",
-            target_id=operation.target_id,
-            reason=(
-                f"general action {operation.target_id!r} has no qualified Just recipe; "
-                "re-propose it through a supported Bash recipe vocabulary"
-            ),
         )
 
     working_directory = _relative_working_directory(repository_root, event.cwd)
@@ -307,54 +236,55 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             category="general",
             behavior="redirect",
             target_id=operation.target_id,
-            recipe_id=recipe_id,
             reason="the proposed working directory is outside the repository",
         )
 
     if lowered == "bash":
         assert tokens is not None
-        request = RecipeRequest(
-            recipeID=recipe_id,
+        request = ControllerRequest(
+            operationID=event.tool_use_id,
+            sessionID=event.session_id,
+            turnID=event.turn_id,
             targetID=operation.target_id,
             requestDigest=operation.request_digest,
             proposedToolName=event.tool_name,
             workingDirectory=working_directory,
             argv=tokens,
         )
-        command = _recipe_command(repository_root, recipe_id, request)
-        updated = dict(event.tool_input) if isinstance(event.tool_input, dict) else {}
+        command = _controller_command(repository_root, request)
+        updated = dict(event.tool_input)
         updated["command"] = command
         updated.pop("cmd", None)
         return RoutePlan(
             category="general",
             behavior="rewrite",
             target_id=operation.target_id,
-            recipe_id=recipe_id,
             request=request,
             updated_input=updated,
             redirect_command=command,
         )
 
     if event.tool_name == "apply_patch":
-        request = RecipeRequest(
-            recipeID=recipe_id,
+        request = ControllerRequest(
+            operationID=event.tool_use_id,
+            sessionID=event.session_id,
+            turnID=event.turn_id,
             targetID=operation.target_id,
             requestDigest=operation.request_digest,
             proposedToolName=event.tool_name,
             workingDirectory=working_directory,
             toolInput=event.tool_input,
         )
-        command = _recipe_command(repository_root, recipe_id, request)
+        command = _controller_command(repository_root, request)
         return RoutePlan(
             category="general",
             behavior="redirect",
             target_id=operation.target_id,
-            recipe_id=recipe_id,
             request=request,
             redirect_command=command,
             reason=(
                 "Codex cannot change an apply_patch call into Bash; re-issue the exact "
-                f"canonical recipe through Bash: {command}"
+                f"controller-workbook command through Bash: {command}"
             ),
         )
 
@@ -362,10 +292,9 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
         category="general",
         behavior="redirect",
         target_id=operation.target_id,
-        recipe_id=recipe_id,
         reason=(
-            "Codex hooks cannot change an MCP tool into Bash; re-propose the equivalent "
-            f"operation through the {recipe_id!r} Just recipe"
+            f"general tool action {operation.target_id!r} has no controller adapter in this "
+            "slice; re-propose it through an admitted Bash action or add a typed adapter"
         ),
     )
 
@@ -387,27 +316,34 @@ def render_pretool_response(
                 "permissionDecision": "allow",
                 "updatedInput": plan.updated_input,
                 "additionalContext": (
-                    f"Routed general action {plan.target_id} through Just recipe "
-                    f"{plan.recipe_id}."
+                    f"Routed general action {plan.target_id} through a disposable "
+                    "operation-controller workbook."
                 ),
             }
         }
 
     if plan.behavior == "redirect":
+        reason = plan.reason or "general action requires controller-workbook transport"
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": plan.reason or "general action requires a Just recipe",
+                "permissionDecisionReason": reason,
             }
         }
 
-    if not isinstance(specific, dict) or specific.get("permissionDecision") != "approve":
-        return internal_response
-    sanitized = dict(specific)
-    sanitized.pop("permissionDecision", None)
-    if plan.reason:
-        sanitized["additionalContext"] = plan.reason
-    if set(sanitized) == {"hookEventName"}:
-        return {}
-    return {**internal_response, "hookSpecificOutput": sanitized}
+    if plan.behavior == "neutral" and plan.reason:
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": plan.reason,
+            }
+        }
+
+    if isinstance(specific, dict) and specific.get("permissionDecision") == "approve":
+        sanitized = dict(specific)
+        sanitized.pop("permissionDecision", None)
+        if set(sanitized) == {"hookEventName"}:
+            return {}
+        return {**internal_response, "hookSpecificOutput": sanitized}
+    return internal_response
