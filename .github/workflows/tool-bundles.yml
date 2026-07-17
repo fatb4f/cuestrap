@@ -49,7 +49,14 @@ jobs:
           "$RUNNER_TEMP/cuestrap/bin/go" version
           "$RUNNER_TEMP/cuestrap/bin/cue" version
           "$RUNNER_TEMP/cuestrap/bin/gopls" version
-          "$RUNNER_TEMP/cuestrap/bin/gopy" -h
+          gopy_help=
+          if gopy_help=$("$RUNNER_TEMP/cuestrap/bin/gopy" -h 2>&1); then
+            gopy_status=0
+          else
+            gopy_status=$?
+          fi
+          [[ "$gopy_status" -eq 2 ]]
+          grep -q '^Usage of gopy:' <<<"$gopy_help"
           mkdir -p "$RUNNER_TEMP/round-trip"
           tar --zstd -xf dist/release/cuestrap-tools-linux-amd64.tar.zst \
             -C "$RUNNER_TEMP/round-trip"
