@@ -4,14 +4,14 @@ import "list"
 
 // #RealizationIntegrity closes references inside one S04 realization. A value
 // satisfying #CueRealization alone is shape-valid; a value admitted through
-// this relation additionally proves that every referenced graph member exists
-// and every semantic claim is bound to semantic authority.
+// this relation additionally proves that every referenced graph member exists,
+// that every optional materialization reference is exact and coherent, and
+// that every expected fact preserves its semantic claim value.
 #RealizationIntegrity: {
 	realization: #CueRealization
 
 	let R = realization
 
-	_authorityIDs:         [for ID, _ in R.authorities {ID}]
 	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
 	_subjectIDs:           [for ID, _ in R.subjects {ID}]
 	_materializationIDs:   [for ID, _ in R.materializations {ID}]
@@ -30,7 +30,7 @@ import "list"
 				subjectsExist: [for _, Operand in Claim.operands {
 					subjectExists: true & list.Contains(_subjectIDs, Operand.subjectID)
 					if Operand.materializationID != _|_ {
-						materializationExists:        true & list.Contains(_materializationIDs, Operand.materializationID)
+						materializationExists:         true & list.Contains(_materializationIDs, Operand.materializationID)
 						materializationSubjectMatches: Operand.subjectID & R.materializations[Operand.materializationID].subjectID
 					}
 				}]
@@ -73,13 +73,13 @@ import "list"
 				operations: [for _, Operation in Plan.operations {
 					leftSubjectExists: true & list.Contains(_subjectIDs, Operation.left.subjectID)
 					if Operation.left.materializationID != _|_ {
-						leftMaterializationExists:        true & list.Contains(_materializationIDs, Operation.left.materializationID)
+						leftMaterializationExists:         true & list.Contains(_materializationIDs, Operation.left.materializationID)
 						leftMaterializationSubjectMatches: Operation.left.subjectID & R.materializations[Operation.left.materializationID].subjectID
 					}
 					if Operation.kind != "validate" {
 						rightSubjectExists: true & list.Contains(_subjectIDs, Operation.right.subjectID)
 						if Operation.right.materializationID != _|_ {
-							rightMaterializationExists:        true & list.Contains(_materializationIDs, Operation.right.materializationID)
+							rightMaterializationExists:         true & list.Contains(_materializationIDs, Operation.right.materializationID)
 							rightMaterializationSubjectMatches: Operation.right.subjectID & R.materializations[Operation.right.materializationID].subjectID
 						}
 					}
@@ -110,6 +110,19 @@ import "list"
 			}
 		}
 	}
+
+	// This payload is intentionally hidden from exported data but is re-exposed
+	// under a regular field by #JudgementDerivation's concrete JSON gate. That
+	// forces every integrity check to evaluate before judgement publication.
+	_qualificationChecks: {
+		claims:                  _claims
+		materializations:        _materializations
+		expectedFacts:           _expectedFacts
+		normalizedFactIDsUnique: _normalizedFactIDsUnique
+		comparisonRules:         _comparisonRules
+		plans:                   _plans
+		cases:                   _cases
+	}
 }
 
 // Raw observation facts are identity-bound to their enclosing record.
@@ -125,5 +138,9 @@ import "list"
 				sourceRecordDigest: O.sourceRecordDigest
 			}
 		}
+	}
+
+	_qualificationChecks: {
+		facts: _facts
 	}
 }

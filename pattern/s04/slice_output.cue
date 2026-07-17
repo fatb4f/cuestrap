@@ -18,7 +18,9 @@ package s04
 	languageVersion:   #NonEmptyString
 	goVersion:         #NonEmptyString
 	commands:          [#NonEmptyString, ...#NonEmptyString]
+	toolBundleDigest?: #Digest
 	evidenceDigest?:   #Digest
+	evidencePath?:     #RelativePath
 	workflowRunID?:    uint & >0
 	artifactID?:       uint & >0
 	diagnostics?:      [#Diagnostic, ...#Diagnostic]
@@ -44,19 +46,35 @@ package s04
 })
 
 // sliceOutput is the concrete artifact handed to the next slice. Its payload
-// identity excludes this manifest file to avoid self-reference and is computed
-// over the ordered path/blob records below.
+// identity excludes this manifest and its qualification receipt to avoid
+// self-reference. The receipt binds the exact source set and bundled evaluator.
 sliceOutput: #S04ContractBundleManifest & {
-	sourceSetDigest: "sha256:5a1f487024562ceeb7968bc1168250080e7d32105df1430908829996f4df2c57"
+	sourceSetDigest: "sha256:36c482ade6289f6bf8d618632a7e6ea4033bc4c39b1a5c668032c2966d68157f"
 
 	sourceFiles: {
 		"integrity": {
 			path:       "pattern/s04/integrity.cue"
-			gitBlobSHA: "ad02d10166951206c60ca843fa53d01f2df15285"
+			gitBlobSHA: "0c470e3838105679f988df904745bb21b4e60b78"
 		}
 		"invalid-claim-value": {
 			path:       "pattern/s04/invalid_claim_value.cue.txt"
 			gitBlobSHA: "a793626eb555af517909425350d7295716476b35"
+		}
+		"invalid-disjunctive-materialization": {
+			path:       "pattern/s04/invalid_disjunctive_materialization.cue.txt"
+			gitBlobSHA: "2e7f6c4c58584a8f88707cdcaabe72ada2d0f711"
+		}
+		"invalid-disjunctive-required-outcome": {
+			path:       "pattern/s04/invalid_disjunctive_required_outcome.cue.txt"
+			gitBlobSHA: "0d1d1651570723fb210052de55639d6a58e80079"
+		}
+		"invalid-incomplete-claim-value": {
+			path:       "pattern/s04/invalid_incomplete_claim_value.cue.txt"
+			gitBlobSHA: "bedcdfa52a6a3df385c9ac858695664389279e47"
+		}
+		"invalid-incomplete-materialization": {
+			path:       "pattern/s04/invalid_incomplete_materialization.cue.txt"
+			gitBlobSHA: "86db56669f0e3c5d2c533041c97379611510cf1f"
 		}
 		"invalid-materialization": {
 			path:       "pattern/s04/invalid_materialization.cue.txt"
@@ -74,6 +92,14 @@ sliceOutput: #S04ContractBundleManifest & {
 			path:       "pattern/s04/invalid_reference.cue.txt"
 			gitBlobSHA: "1144021fc15fe034e8dacdb989bfee34eefab244"
 		}
+		"invalid-required-not-permitted": {
+			path:       "pattern/s04/invalid_required_not_permitted.cue.txt"
+			gitBlobSHA: "6287cbfc81638c3e41dc8d0c06db4eb1e7e3ab6d"
+		}
+		"invalid-unpermitted-outcome": {
+			path:       "pattern/s04/invalid_unpermitted_outcome.cue.txt"
+			gitBlobSHA: "108620de0d613398d1846ee3186bf24ec1a7f2ae"
+		}
 		"negative-validate": {
 			path:       "pattern/s04/negative_validate.cue.txt"
 			gitBlobSHA: "982a8740899062581e73a1e813f10467caaa6ecb"
@@ -88,15 +114,15 @@ sliceOutput: #S04ContractBundleManifest & {
 		}
 		"qualification": {
 			path:       "pattern/s04/qualification.cue"
-			gitBlobSHA: "7d0035d382faf66646e61623f1e2d451af4e3653"
+			gitBlobSHA: "cf2f0d0a6da84fc95d7de3934a86cb2b6f473382"
 		}
 		"semantic-ir": {
 			path:       "pattern/s04/semantic_ir.cue"
-			gitBlobSHA: "0a70f22ad74a7da65bda5fd8be05c73cbbf3579a"
+			gitBlobSHA: "e03806da77fc1653f07c1e5131e9459979a06c1d"
 		}
 		"validation-witness": {
 			path:       "pattern/s04/validation_witness.cue"
-			gitBlobSHA: "7a235ce14a62d70cd8bc857362a6f3a84d7775b0"
+			gitBlobSHA: "75276787f58ccdb9fecc58d4975c832e9f7123c2"
 		}
 	}
 
@@ -110,20 +136,20 @@ sliceOutput: #S04ContractBundleManifest & {
 	]
 
 	qualification: {
-		disposition:       "indeterminate"
+		disposition:       "qualified"
 		evaluatorRevision: "806821e40fae070318600a264d311517e596353b"
 		languageVersion:   "v0.18.0"
-		goVersion:         "1.25.5"
+		goVersion:         "1.26.5"
 		commands: [
 			"cue fmt --check pattern/s04/*.cue",
 			"cue vet -c=false pattern/s04/*.cue",
-			"cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text",
-			"cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text",
-			"expected-bottom validation for binary validate, foreign semantic references, foreign projection cases, contradictory claim values, missing materializations, and prohibited outcomes",
+			"cue eval -c pattern/s04/*.cue -e validation.positive.judgement --out json",
+			"cue eval -c pattern/s04/*.cue -e validation.indeterminate.judgement --out json",
+			"expected-bottom validation for eight concrete structural regressions",
+			"public-outcome blocking for four incomplete or disjunctive regressions",
 		]
-		diagnostics: [{
-			code:    "logical-fix-qualification-pending"
-			message: "The corrected source set requires fresh exact CUE v0.18 qualification."
-		}]
+		toolBundleDigest: "sha256:bde8864f55193a712d5e0b55e89c4e7a7fb6de11f0667dd8235f8e21373cc5e3"
+		evidenceDigest:   "sha256:03f2d8bf0511689a24ec964247c738967ae13108eb175e63f6e02a80652c4692"
+		evidencePath:     "pattern/s04/qualification_receipt.json"
 	}
 }

@@ -1,47 +1,75 @@
 # Exact validation protocol
 
-The qualification surface for this contract bundle is the upstream CUE source
-revision pinned by the repository:
+The qualification surface is the offline CUEstrap tool bundle supplied with the
+project sources. Its outer archive identity is:
 
 ```text
-cue-lang/cue@806821e40fae070318600a264d311517e596353b
-language/module target v0.18.0
-Go 1.25.5
+cuestrap-tools-linux-amd64.tar.zst
+sha256:bde8864f55193a712d5e0b55e89c4e7a7fb6de11f0667dd8235f8e21373cc5e3
 ```
 
-The validator builds the CLI from that exact revision:
+The installed CUE executable reports:
 
-```sh
-GOBIN="$RUNNER_TEMP/bin" \
-  go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
-cue version
+```text
+cue-lang/cue revision 806821e40fae070318600a264d311517e596353b
+CUE language version v0.18.0
+Go 1.26.5
 ```
 
-It then evaluates the committed generic contract witness:
+## Positive package qualification
 
 ```sh
 cue fmt --check pattern/s04/*.cue
 cue vet -c=false pattern/s04/*.cue
-cue eval pattern/s04/*.cue \
-  -e validation.positive.judgement.outcome --out text
-cue eval pattern/s04/*.cue \
-  -e validation.indeterminate.judgement.outcome --out text
-cue eval pattern/s04/*.cue -e sliceOutput --out json
+cue eval -c pattern/s04/*.cue \
+  -e validation.positive.judgement --out json
+cue eval -c pattern/s04/*.cue \
+  -e validation.indeterminate.judgement --out json
 ```
 
-Expected outputs are `satisfied` and `indeterminate`. The package contains
-incomplete reusable definitions, so structural vetting deliberately uses
-`-c=false`; concrete witness expressions are separately evaluated.
+Expected outcomes are `satisfied` and `indeterminate`.
 
-Each `.cue.txt` negative input is copied to a temporary `.cue` filename and must
-bottom under `cue vet -c=false pattern/s04/*.cue`:
+The package contains incomplete reusable definitions, so structural vetting uses
+`-c=false`. The two admitted judgement values are separately evaluated with
+`-c`, and judgement publication itself is guarded by the CUE-owned JSON
+concreteness gate.
 
-- a validate operation carrying a right operand;
-- a realization containing foreign semantic references;
-- a projection containing a foreign realization case;
-- an expected fact contradicting its semantic claim value;
-- an operation referencing a missing subject materialization;
-- a derived judgement violating the case's required outcome.
+## Concrete expected-bottom witnesses
 
-The committed witness is generic qualification evidence, not an LT-01 package
-fixture and not a second semantic authority.
+Copy each file to a temporary `.cue` filename and require
+`cue vet -c=false pattern/s04/*.cue` to fail:
+
+- `negative_validate.cue.txt` — validate cannot carry a right operand;
+- `invalid_reference.cue.txt` — semantic references must exist;
+- `invalid_projection.cue.txt` — projection cases must be total and valid;
+- `invalid_claim_value.cue.txt` — expected facts preserve claim values;
+- `invalid_materialization.cue.txt` — materialization references must exist;
+- `invalid_outcome_constraint.cue.txt` — required outcome must match;
+- `invalid_unpermitted_outcome.cue.txt` — derived outcome must be permitted;
+- `invalid_required_not_permitted.cue.txt` — required must be in permitted.
+
+## Incomplete/disjunctive publication witnesses
+
+Copy each file to a temporary `.cue` filename and require selection of the named
+public outcome to fail:
+
+```text
+invalid_incomplete_claim_value.cue.txt
+    invalidIncompleteClaimValue.judgement.outcome
+
+invalid_incomplete_materialization.cue.txt
+    invalidIncompleteMaterialization.judgement.outcome
+
+invalid_disjunctive_materialization.cue.txt
+    invalidDisjunctiveMaterialization.judgement.outcome
+
+invalid_disjunctive_required_outcome.cue.txt
+    invalidDisjunctiveRequiredOutcome.judgement.outcome
+```
+
+These witnesses specifically prevent a concrete semantic outcome from escaping
+through CUE narrowing of unresolved or disjunctive consumer input.
+
+The durable command/result record is `qualification_receipt.json`. It is
+evidence for the source set but is excluded from the source-set digest to avoid
+self-reference.

@@ -15,29 +15,47 @@ runner / transport
     emits raw observation records, diagnostics, identities, and process states
 
 S04 CUE authority
-    normalizes semantic facts, applies comparison rules, and derives
-    satisfied / rejected / indeterminate
+    validates concrete semantic inputs and graph integrity
+    normalizes semantic facts
+    applies comparison rules
+    derives satisfied / rejected / indeterminate
 ```
 
 Candidate `accepted` and `rejected` values in the package profile are declared
 expectations. They are not runner verdicts and do not establish an S04 semantic
 outcome.
 
+## Concrete judgement publication
+
+`#JudgementDerivation` first constructs an internal judgement. The public
+`judgement` field exists only after `encoding/json.Marshal` succeeds over:
+
+- the complete realization and judgement ingress;
+- realization and observation integrity results;
+- outcome-permission and required-outcome checks;
+- the complete derived judgement.
+
+The marshal is a CUE-owned concreteness gate. It rejects unresolved types and
+disjunctions rather than silently narrowing them to a value that permits a
+semantic outcome. Concrete invalid references still bottom through the
+integrity relations.
+
 ## Files
 
-- `semantic_ir.cue` defines the backend-neutral S04 v0 vocabulary and the
-  CUE-owned normalization/judgement relation.
-- `integrity.cue` proves graph references and authority roles.
+- `semantic_ir.cue` defines the backend-neutral S04 v0 vocabulary, materialized
+  subject registry, concrete publication gate, normalization, and judgement.
+- `integrity.cue` proves graph references, authority roles, claim/fact value
+  preservation, and materialization coherence.
 - `ppf_profile.cue` defines the minimal Kattis-shaped package profile.
 - `projection_relation.cue` derives the total identity-bound projection.
 - `slice_output.cue` publishes the exact contract-bundle handoff.
-- `validation_witness.cue` and `qualification.cue` prove positive and
-  indeterminate semantic derivations.
-- `negative_validate.cue.txt`, `invalid_reference.cue.txt`,
-  `invalid_projection.cue.txt`, `invalid_claim_value.cue.txt`,
-  `invalid_materialization.cue.txt`, and
-  `invalid_outcome_constraint.cue.txt` are expected-bottom qualification inputs.
-- `VALIDATION.md` records the pinned CUE qualification protocol.
+- `validation_witness.cue` and `qualification.cue` prove concrete positive and
+  indeterminate derivations.
+- `.cue.txt` inputs prove concrete structural bottoms and prevent incomplete or
+  disjunctive values from exposing `judgement.outcome`.
+- `qualification_receipt.json` records the exact offline bundle and command
+  results used to qualify the source set.
+- `VALIDATION.md` records the reproducible qualification protocol.
 
 No LT-01 package instance or candidate fixture is included in this slice.
 
@@ -85,18 +103,7 @@ verdict vocabulary as S04 authority.
 
 ## Narrow qualification
 
-From a repository environment with the pinned CUE toolchain:
-
-```sh
-cue fmt --check pattern/s04/*.cue
-cue vet -c=false pattern/s04/*.cue
-cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text
-cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text
-```
-
-The negative inputs must each bottom when copied to a `.cue` filename and vetted
-with the same package. The exact build and evidence protocol is recorded in
-`VALIDATION.md`.
-
-The corrected source manifest remains `indeterminate` until those checks are
-rerun against the exact source-set digest recorded by `sliceOutput`.
+Install the project-source bundle, prepend its `bin` directory to `PATH`, and
+run the protocol in `VALIDATION.md`. The structural witnesses must bottom under
+`cue vet -c=false`; the incomplete/disjunctive witnesses must fail when their
+public judgement outcome is selected.

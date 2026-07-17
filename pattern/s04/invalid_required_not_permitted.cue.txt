@@ -1,0 +1,6 @@
+package s04
+
+invalidRequiredNotPermitted: #OutcomeConstraint & {
+	permitted: ["satisfied"]
+	required:  "rejected"
+}

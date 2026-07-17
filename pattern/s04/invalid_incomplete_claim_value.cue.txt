@@ -1,0 +1,25 @@
+package s04
+
+invalidIncompleteClaimValue: #JudgementDerivation & {
+	realization: validation.realization & {
+		claims: {
+			"incomplete-claim": {
+				claimID:     "incomplete-claim"
+				authorityID: "semantic"
+				predicate:   "subsumes"
+				operands:    [{subjectID: "left"}, {subjectID: "right"}]
+				value:       bool
+			}
+		}
+		expectedFacts: {
+			"incomplete-fact": {
+				factID:        "incomplete-fact"
+				claimID:       "incomplete-claim"
+				authorityID:   "semantic"
+				predicate:     "subsumes"
+				expectedValue: false
+			}
+		}
+	}
+	ingress: validation.positive.ingress
+}

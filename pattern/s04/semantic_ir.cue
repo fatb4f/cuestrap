@@ -1,6 +1,9 @@
 package s04
 
-import "list"
+import (
+	"encoding/json"
+	"list"
+)
 
 // S04 v0 semantic realization intermediate representation.
 //
@@ -376,7 +379,7 @@ import "list"
 		facts:                      _normalizedFacts
 	}
 
-	judgement: #SemanticJudgement & {
+	_derivedJudgement: #SemanticJudgement & {
 		judgementID:             ingress.judgementID
 		derivationInputDigest:   ingress.derivationInputDigest
 		evaluator:               ingress.evaluator
@@ -403,9 +406,29 @@ import "list"
 		}
 	}
 
-	_outcomePermitted: true & list.Contains(_case.outcomeConstraint.permitted, judgement.outcome)
-	if _case.outcomeConstraint.required != _|_ {
-		_requiredOutcomeMatch: judgement.outcome & _case.outcomeConstraint.required
+	_outcomeChecks: {
+		permitted: true & list.Contains(_case.outcomeConstraint.permitted, _derivedJudgement.outcome)
+		if _case.outcomeConstraint.required != _|_ {
+			required: _derivedJudgement.outcome & _case.outcomeConstraint.required
+		}
+	}
+
+	// Marshal the complete semantic input and every integrity result before the
+	// public judgement field exists. encoding/json.Marshal rejects incomplete or
+	// disjunctive values, preventing a concrete outcome from escaping by narrowing
+	// an unresolved realization merely to satisfy hidden constraints.
+	_concreteQualificationPayload: {
+		realizationValue:     realization
+		ingressValue:         ingress
+		realizationIntegrity: _realizationIntegrity._qualificationChecks
+		observationIntegrity: _observationIntegrity._qualificationChecks
+		outcomeChecks:        _outcomeChecks
+		derivedJudgement:     _derivedJudgement
+	}
+	_concreteQualificationJSON: json.Marshal(_concreteQualificationPayload)
+
+	if _concreteQualificationJSON != "" {
+		judgement: _derivedJudgement
 	}
 }
 

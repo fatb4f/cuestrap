@@ -25,6 +25,7 @@ validation: {
 				source:      {kind: "process-runner", locator: "witness", revision: "v0", digest: _digest}
 			}
 		}
+		materializations: {}
 		subjects: {
 			"left":  {subjectID: "left", language: "cue", source: {kind: "inline", expression: "int"}, mediaType: "application/cue"}
 			"right": {subjectID: "right", language: "cue", source: {kind: "inline", expression: "1"}, mediaType: "application/cue"}

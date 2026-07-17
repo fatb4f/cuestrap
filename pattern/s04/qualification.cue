@@ -4,7 +4,8 @@ package s04
 // qualification evidence without introducing LT-01 package fixtures.
 validation: {
 	positive: {
-		judgement: {
+		_concreteQualificationJSON: string & !=""
+		_derivedJudgement: {
 			outcome: "satisfied"
 			comparisonResults: {
 				"compare": {
@@ -14,7 +15,8 @@ validation: {
 		}
 	}
 	indeterminate: {
-		judgement: {
+		_concreteQualificationJSON: string & !=""
+		_derivedJudgement: {
 			outcome:           "indeterminate"
 			comparisonResults: close({})
 			normalizedFactSet: {
