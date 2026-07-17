@@ -106,6 +106,7 @@ import "list"
 		direction: "left-to-right" | "right-to-left"
 	}
 	if kind == "validate" {
+		right?:    _|_
 		direction: "subject-only"
 	}
 })
@@ -291,7 +292,21 @@ import "list"
 	realization: #CueRealization
 	ingress:     #JudgementIngress
 
+	_realizationIntegrity: #RealizationIntegrity & {
+		realization: realization
+	}
+	_observationIntegrity: #ObservationIntegrity & {
+		observation: ingress.observation
+	}
+
 	_case: realization.cases[ingress.caseID]
+	_semanticAuthority: realization.authorities[ingress.semanticAuthorityID] & {
+		role: "semantic-authority"
+	}
+	_observerAuthority: realization.authorities[ingress.observation.observerAuthorityID] & {
+		role: "raw-observer"
+	}
+
 	ingress: {
 		normalizationRuleIDs: _case.normalizationRuleIDs
 		comparisonRuleIDs:    _case.comparisonRuleIDs
@@ -300,8 +315,12 @@ import "list"
 		}
 	}
 
+	_normalizedFacts:   {}
+	_comparisonResults: {}
+	_allMatched:        bool
+
 	if ingress.observation.state == "facts-observed" {
-		_normalizedFacts: {
+		_normalizedFacts: close({
 			for _, RuleID in ingress.normalizationRuleIDs {
 				"\(realization.normalizationRules[RuleID].normalizedFactID)": #NormalizedFact & {
 					factID:                  realization.normalizationRules[RuleID].normalizedFactID
@@ -312,9 +331,9 @@ import "list"
 					sourceObservationDigest: ingress.observation.sourceRecordDigest
 				}
 			}
-		}
+		})
 
-		_comparisonResults: {
+		_comparisonResults: close({
 			for _, RuleID in ingress.comparisonRuleIDs {
 				"\(RuleID)": #ComparisonResult & {
 					ruleID:           RuleID
@@ -330,7 +349,7 @@ import "list"
 					}
 				}
 			}
-		}
+		})
 
 		_allMatched: list.And([for _, Result in _comparisonResults {Result.matched}])
 	}
@@ -338,6 +357,7 @@ import "list"
 	if ingress.observation.state != "facts-observed" {
 		_normalizedFacts:   close({})
 		_comparisonResults: close({})
+		_allMatched:        false
 	}
 
 	_normalizedFactSet: #NormalizedFactSet & {
