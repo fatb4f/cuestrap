@@ -11,22 +11,40 @@ package s04
 #PackageShortName:     #NonEmptyString & =~"^[a-z0-9]+$"
 #UUID: #NonEmptyString & =~"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
-#PPFProblemMetadata: close({
-	problemFormatVersion: #PPFSourceSpecVersion
-	shortName:            #PackageShortName
-	name:                 #NonEmptyString
-	uuid:                 #UUID
-	source:               #NonEmptyString
-	author:               #NonEmptyString
-	rightsOwner:          #NonEmptyString
+#PPFLicense:
+	"unknown" |
+	"public domain" |
+	"cc0" |
+	"cc by" |
+	"cc by-sa" |
+	"educational" |
+	"permission"
+
+#PPFCredits: close({
+	authors: [#NonEmptyString, ...#NonEmptyString]
 })
 
+// #PPFExecutionLimits uses the field names serialized in problem.yaml.
 #PPFExecutionLimits: close({
-	timeSeconds:          number & >0
-	memoryMiB:            int & >0
-	outputMiB:            int & >0
-	validationSeconds:    number & >0
-	validationMemoryMiB:  int & >0
+	"time_limit":        number & >0
+	memory:              int & >0
+	output:              int & >0
+	"validation_time":  number & >0
+	"validation_memory": int & >0
+	"validation_output": int & >0
+})
+
+// #PPFProblemMetadata is the exact problem.yaml projection used by this profile.
+#PPFProblemMetadata: close({
+	"problem_format_version": #PPFSourceSpecVersion
+	type:                     "pass-fail"
+	name:                     #NonEmptyString
+	uuid:                     #UUID
+	source?:                  #NonEmptyString
+	credits?:                 #PPFCredits
+	license?:                 #PPFLicense
+	"rights_owner"?:          #NonEmptyString
+	limits:                   #PPFExecutionLimits
 })
 
 #PPFPackagePaths: close({
@@ -67,12 +85,12 @@ package s04
 })
 
 #PPFValidator: close({
-	validatorID:           #SafeID
-	kind:                  "s04-independent-judge"
-	entrypoint:            #RelativePath
-	semanticAuthorityID:   #SafeID
-	observationInputRoot:  #RelativePath
-	judgementOutputRoot:   #RelativePath
+	validatorID:          #SafeID
+	kind:                 "s04-independent-judge"
+	entrypoint:           #RelativePath
+	semanticAuthorityID:  #SafeID
+	observationInputRoot: #RelativePath
+	judgementOutputRoot:  #RelativePath
 })
 
 #PPFEvidenceRequirement: close({
@@ -94,13 +112,13 @@ package s04
 	sourceSpecVersion: #PPFSourceSpecVersion
 	conformance:       "profile-only"
 
-	packageID:     #SafeID
-	packageDigest: #Digest
+	packageID:       #SafeID
+	packageDirectory: #PackageShortName
+	packageDigest:   #Digest
 	metadata: #PPFProblemMetadata & {
-		problemFormatVersion: sourceSpecVersion
+		"problem_format_version": sourceSpecVersion
 	}
-	limits: #PPFExecutionLimits
-	paths:  #PPFPackagePaths
+	paths: #PPFPackagePaths
 	validator: #PPFValidator & {
 		entrypoint:           paths.judgeEntrypoint
 		observationInputRoot: paths.rawObservationRoot
