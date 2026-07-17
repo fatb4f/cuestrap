@@ -12,7 +12,7 @@ matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.
 type = "command"
 command = '"$(git rev-parse --show-toplevel)/.venv/bin/python" "$(git rev-parse --show-toplevel)/.codex/hooks/cuestrap_tool_supervisor.py" --repository-root "$(git rev-parse --show-toplevel)" hook'
 timeout = 10
-statusMessage = "Checking CUEstrap action routing and anti-churn evidence"
+statusMessage = "Routing through CUEstrap controller workbooks"
 
 [[hooks.PostToolUse]]
 matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
@@ -21,7 +21,7 @@ matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.
 type = "command"
 command = '"$(git rev-parse --show-toplevel)/.venv/bin/python" "$(git rev-parse --show-toplevel)/.codex/hooks/cuestrap_tool_supervisor.py" --repository-root "$(git rev-parse --show-toplevel)" hook'
 timeout = 10
-statusMessage = "Recording CUEstrap progress evidence"
+statusMessage = "Recording CUEstrap controller evidence"
 
 [mcp_servers.cue_lsp]
 command = "uv"
