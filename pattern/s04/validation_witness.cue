@@ -31,7 +31,7 @@ validation: {
 		}
 		claims: {
 			"claim": {
-				claimID: "claim", authorityID: "semantic", predicate: "subsumes", operands: [{subjectID: "left"}, {subjectID: "right"}], value: true
+				claimID:     "claim", authorityID: "semantic", predicate:   "subsumes", operands:    [{subjectID: "left"}, {subjectID: "right"}], value:       true
 			}
 		}
 		expectedFacts: {
@@ -48,13 +48,13 @@ validation: {
 		}
 		plans: {
 			"plan": {
-				planID: "plan"
+				planID:     "plan"
 				operations: [{operationID: "operation", kind: "subsumes", left: {subjectID: "left"}, right: {subjectID: "right"}, direction: "left-to-right", produces: ["raw"]}]
 			}
 		}
 		cases: {
 			"case": {
-				caseID: "case", groupID: "group", planID: "plan", subjectIDs: ["left", "right"], expectedFactIDs: ["expected"], normalizationRuleIDs: ["normalize"], comparisonRuleIDs: ["compare"], requiredCapabilityIDs: ["native-subsumes"], outcomeConstraint: {permitted: ["satisfied", "rejected", "indeterminate"]}
+				caseID:                "case", groupID:               "group", planID:                "plan", subjectIDs:            ["left", "right"], expectedFactIDs:       ["expected"], normalizationRuleIDs:  ["normalize"], comparisonRuleIDs:     ["compare"], requiredCapabilityIDs: ["native-subsumes"], outcomeConstraint:     {permitted: ["satisfied", "rejected", "indeterminate"]}
 			}
 		}
 	}
@@ -62,24 +62,44 @@ validation: {
 	positive: #JudgementDerivation & {
 		realization: validation.realization
 		ingress: {
-			requestID: "positive-request", judgementID: "positive-judgement", derivationInputDigest: _digest,
-			evaluator: {cueRevision: "806821e40fae070318600a264d311517e596353b", languageVersion: "v0.18.0", relationID: "s04.derive-semantic-judgement.v0", facadeDigest: _digest},
-			realizationDigest: _digest, caseID: "case", semanticAuthorityID: "semantic", packageDigest: _digest, candidateDigest: _digest,
-			observation: {schema: "s04.observation-record.v0", observationID: "positive-observation", caseID: "case", observerAuthorityID: "observer", sourceRecordDigest: _digest, state: "facts-observed", facts: {"raw": {factID: "raw", observationID: "positive-observation", predicate: "subsumes", observedValue: true, sourceRecordDigest: _digest}}},
-			normalizedFactSetID: "positive-facts", normalizedFactSetDigest: _digest, normalizationRuleSetDigest: _digest, comparisonRuleSetDigest: _digest,
-			normalizationRuleIDs: ["normalize"], comparisonRuleIDs: ["compare"]
+			requestID:                  "positive-request"
+			judgementID:                "positive-judgement"
+			derivationInputDigest:      _digest
+			evaluator:                  {cueRevision: "806821e40fae070318600a264d311517e596353b", languageVersion: "v0.18.0", relationID: "s04.derive-semantic-judgement.v0", facadeDigest: _digest}
+			realizationDigest:          _digest
+			caseID:                     "case"
+			semanticAuthorityID:        "semantic"
+			packageDigest:              _digest
+			candidateDigest:            _digest
+			observation:                {schema: "s04.observation-record.v0", observationID: "positive-observation", caseID: "case", observerAuthorityID: "observer", sourceRecordDigest: _digest, state: "facts-observed", facts: {"raw": {factID: "raw", observationID: "positive-observation", predicate: "subsumes", observedValue: true, sourceRecordDigest: _digest}}}
+			normalizedFactSetID:        "positive-facts"
+			normalizedFactSetDigest:    _digest
+			normalizationRuleSetDigest: _digest
+			comparisonRuleSetDigest:    _digest
+			normalizationRuleIDs:       ["normalize"]
+			comparisonRuleIDs:          ["compare"]
 		}
 	}
 
 	indeterminate: #JudgementDerivation & {
 		realization: validation.realization
 		ingress: {
-			requestID: "missing-request", judgementID: "missing-judgement", derivationInputDigest: _digest,
-			evaluator: {cueRevision: "806821e40fae070318600a264d311517e596353b", languageVersion: "v0.18.0", relationID: "s04.derive-semantic-judgement.v0", facadeDigest: _digest},
-			realizationDigest: _digest, caseID: "case", semanticAuthorityID: "semantic", packageDigest: _digest, candidateDigest: _digest,
-			observation: {schema: "s04.observation-record.v0", observationID: "missing-observation", caseID: "case", observerAuthorityID: "observer", sourceRecordDigest: _digest, state: "capability-absent", facts: {}, diagnostics: [{code: "capability-absent", message: "required capability unavailable"}]},
-			normalizedFactSetID: "missing-facts", normalizedFactSetDigest: _digest, normalizationRuleSetDigest: _digest, comparisonRuleSetDigest: _digest,
-			normalizationRuleIDs: ["normalize"], comparisonRuleIDs: ["compare"]
+			requestID:                  "missing-request"
+			judgementID:                "missing-judgement"
+			derivationInputDigest:      _digest
+			evaluator:                  {cueRevision: "806821e40fae070318600a264d311517e596353b", languageVersion: "v0.18.0", relationID: "s04.derive-semantic-judgement.v0", facadeDigest: _digest}
+			realizationDigest:          _digest
+			caseID:                     "case"
+			semanticAuthorityID:        "semantic"
+			packageDigest:              _digest
+			candidateDigest:            _digest
+			observation:                {schema: "s04.observation-record.v0", observationID: "missing-observation", caseID: "case", observerAuthorityID: "observer", sourceRecordDigest: _digest, state: "capability-absent", facts: {}, diagnostics: [{code: "capability-absent", message: "required capability unavailable"}]}
+			normalizedFactSetID:        "missing-facts"
+			normalizedFactSetDigest:    _digest
+			normalizationRuleSetDigest: _digest
+			comparisonRuleSetDigest:    _digest
+			normalizationRuleIDs:       ["normalize"]
+			comparisonRuleIDs:          ["compare"]
 		}
 	}
 }
