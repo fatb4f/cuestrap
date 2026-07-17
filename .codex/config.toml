@@ -95,6 +95,7 @@ enabled_tools = [
   "capture_state",
   "run_probe",
   "apply_transaction",
+  "execute_realization",
   "bind_operation",
   "inspect_operation",
   "execute_operation",
