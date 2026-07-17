@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from backends import _cue_py_worker
-from harness import DEFAULT_WORKBOOK_REQUEST, HarnessError, _reject_claimant_fields, gopy_worker_main
+from harness import (
+    DEFAULT_WORKBOOK_REQUEST,
+    HarnessError,
+    _reject_claimant_fields,
+    execute_s04_package,
+    gopy_worker_main,
+    s04_judge_worker_main,
+)
 from lsp_mcp import McpServer
 
 
@@ -34,18 +41,26 @@ def _dispatch(app: Any) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--probe-request", type=Path)
+    parser.add_argument("--s04-package", type=Path)
     parser.add_argument("--gopy-worker", action="store_true")
+    parser.add_argument("--s04-judge-worker", action="store_true")
     parser.add_argument("--cue-py-worker", action="store_true")
     parser.add_argument("--serve-mcp", choices=("cue-lsp", "gopls"))
     args, marimo_args = parser.parse_known_args()
 
     if args.gopy_worker:
         return gopy_worker_main()
+    if args.s04_judge_worker:
+        return s04_judge_worker_main()
     if args.cue_py_worker:
         return _cue_py_worker()
     root = args.repo_root.resolve(strict=True)
     if args.serve_mcp:
         return McpServer(args.serve_mcp, root).serve()
+    if args.s04_package:
+        result = execute_s04_package(root, args.s04_package)
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
     if args.validate:
         result = _run_workbook(
             app,
