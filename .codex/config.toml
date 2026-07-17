@@ -6,7 +6,7 @@ inherit = "all"
 exclude = ["PYTHONHOME"]
 
 [[hooks.PreToolUse]]
-matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
+matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
@@ -15,7 +15,7 @@ timeout = 10
 statusMessage = "Routing through CUEstrap controller workbooks"
 
 [[hooks.PostToolUse]]
-matcher = "^(Bash|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
+matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
