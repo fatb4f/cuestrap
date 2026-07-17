@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/issue-13-cue-v018-validation-1
+  pull_request:
+    branches:
+      - agent/issue-13-s04-ppf-contract
 
 permissions:
   contents: read
