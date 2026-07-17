@@ -83,6 +83,26 @@ Apply one replacement-based cell transaction only in `implement`. Copy each `exp
 
 The closed operation union is `resolve-session`, `capture-state`, `run-focused-probe`, and `apply-cell-transaction`. There is no raw `execute_code`, arbitrary Python, create/delete/move instruction, or agent-authored MCP request surface.
 
+## Use disposable operation controllers
+
+When the supervisory hook denies a recognized general action with an exact
+`operation_controller_cli.py ... serve` command, re-issue that command unchanged.
+It starts one request-bound loopback-only Marimo code-mode session and returns an
+immutable session binding plus exact `inspect`, `execute`, `diagnose`, and `close`
+commands.
+
+- Use `inspect` before execution to capture the bound request, graph identity,
+  and cell errors.
+- Use `execute` once to claim and perform the effect through the workbook. A
+  repeated call replays the terminal receipt instead of repeating the effect.
+- Use `diagnose` for read-only cell outputs, errors, state identity, and the full
+  structured receipt.
+- Use `close` after evidence collection to dispose of the action-scoped runtime.
+
+Do not alter the payload, endpoint, operation name, or emitted commands, and do
+not call the disposable server's raw MCP tools. This separate closed lifecycle
+does not expand the target-workbook operation union above.
+
 Use the run phase as a dispatch boundary:
 
 - `inspect`: resolve and capture only.

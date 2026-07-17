@@ -25,6 +25,7 @@ RouteBehavior = Literal["direct", "redirect", "neutral"]
 
 WORKBOOK_MCP_PREFIX = "mcp__marimo_code_mode__"
 _CONTROLLER_CLI = "src/cue-workbook/operation_controller_cli.py"
+_CONTROLLER_OPERATIONS = frozenset({"serve", "inspect", "execute", "diagnose", "close"})
 _EXECUTION_TOOLS = frozenset({"bash", "tool_exec"})
 
 
@@ -69,6 +70,7 @@ def _controller_tokens(repository_root: Path, request: ControllerRequest) -> tup
         str(root),
         "--payload",
         encode_controller_request(request),
+        "serve",
     )
 
 
@@ -76,7 +78,7 @@ def _controller_command(repository_root: Path, request: ControllerRequest) -> st
     return shlex.join(_controller_tokens(repository_root, request))
 
 
-def _is_controller_invocation(tokens: tuple[str, ...], repository_root: Path) -> bool:
+def _has_controller_prefix(tokens: tuple[str, ...], repository_root: Path) -> bool:
     root = repository_root.resolve()
     expected_prefix = (
         str(root / ".venv/bin/python"),
@@ -86,9 +88,23 @@ def _is_controller_invocation(tokens: tuple[str, ...], repository_root: Path) ->
         "--payload",
     )
     return (
-        len(tokens) == len(expected_prefix) + 1
+        len(tokens) >= len(expected_prefix)
         and tokens[: len(expected_prefix)] == expected_prefix
     )
+
+
+def _controller_operation(
+    tokens: tuple[str, ...],
+    repository_root: Path,
+) -> str | None:
+    if not _has_controller_prefix(tokens, repository_root):
+        return None
+    operation = tokens[-1] if len(tokens) == 7 else None
+    return operation if operation in _CONTROLLER_OPERATIONS else None
+
+
+def _is_controller_invocation(tokens: tuple[str, ...], repository_root: Path) -> bool:
+    return _controller_operation(tokens, repository_root) is not None
 
 
 def _request_from_controller_tokens(
@@ -98,7 +114,7 @@ def _request_from_controller_tokens(
     if not _is_controller_invocation(tokens, repository_root):
         return None
     try:
-        return decode_controller_request(tokens[-1])
+        return decode_controller_request(tokens[-2])
     except (ValueError, TypeError, json.JSONDecodeError, binascii.Error):
         return None
 
@@ -148,6 +164,8 @@ def restore_posttool_event(
         return event
     request = _request_from_controller_tokens(invocation.argv, repository_root)
     if request is None:
+        return event
+    if _controller_operation(invocation.argv, repository_root) != "execute":
         return event
     synthetic_value = event.model_dump(mode="json", exclude={"tool_response"})
     synthetic_value["hook_event_name"] = "PreToolUse"
@@ -220,18 +238,23 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             )
         if _is_workbook_action(event, invocation, repository_root):
             return RoutePlan(category="workbook-centric", behavior="direct")
-        is_controller_invocation = _is_controller_invocation(
-            invocation.argv,
-            repository_root,
-        )
+        has_controller_prefix = _has_controller_prefix(invocation.argv, repository_root)
+        controller_operation = _controller_operation(invocation.argv, repository_root)
         request = _request_from_controller_tokens(invocation.argv, repository_root)
-        if is_controller_invocation and request is None:
+        if has_controller_prefix and request is None:
             return RoutePlan(
                 category="general",
                 behavior="redirect",
                 reason="controller payload failed full request and semantic revalidation",
             )
         if request is not None:
+            if controller_operation != "execute":
+                return RoutePlan(
+                    category="workbook-centric",
+                    behavior="direct",
+                    target_id=request.target_id,
+                    request=request,
+                )
             semantic_event = _semantic_pre_event(event, request, repository_root)
             if semantic_event is None:
                 return RoutePlan(
@@ -299,8 +322,9 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             request=request,
             redirect_command=command,
             reason=(
-                "re-issue the exact admitted action through the disposable "
-                f"operation-controller workbook: {command}"
+                "instantiate the bound disposable operation-controller workbook, then "
+                "use the exact constrained code-mode commands it returns: "
+                f"{command}"
             ),
             semantic_event=_semantic_pre_event(event, request, repository_root),
         )
@@ -324,8 +348,9 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             request=request,
             redirect_command=command,
             reason=(
-                "Codex cannot change an apply_patch call into an execution tool; re-issue the "
-                f"exact controller-workbook command through Bash or tool_exec: {command}"
+                "Codex cannot change an apply_patch call into an execution tool; instantiate "
+                "the bound controller workbook through Bash or tool_exec, then use its exact "
+                f"constrained code-mode commands: {command}"
             ),
         )
 

@@ -16,13 +16,24 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 import code_mode_client  # noqa: E402
+from operation_controller_cli import (  # noqa: E402
+    ControllerCodeModeBinding,
+    _execute_code as controller_execute_code,
+    _inspect_code as controller_inspect_code,
+    _interaction_document,
+    _serve as serve_controller,
+)
 from bootstrap_client.admission import CodeModeAdmissionContract  # noqa: E402
 from bootstrap_client.binding import (  # noqa: E402
     digest_file,
     local_client_identity,
     local_skill_identity,
 )
-from bootstrap_client.generated.models import digest_json, digest_text  # noqa: E402
+from bootstrap_client.generated.models import (  # noqa: E402
+    SessionBinding,
+    digest_json,
+    digest_text,
+)
 from bootstrap_client.mcp_adapter import AdapterResult  # noqa: E402
 from supervisory_hooks.cli import main as hook_cli_main  # noqa: E402
 from supervisory_hooks.controller import (  # noqa: E402
@@ -231,7 +242,8 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(tokens[0], str(ROOT / ".venv/bin/python"))
         self.assertEqual(tokens[1], str(ROOT / "src/cue-workbook/operation_controller_cli.py"))
         self.assertEqual(tokens[2:5], ("--repository-root", str(ROOT), "--payload"))
-        request = decode_controller_request(tokens[-1])
+        self.assertEqual(tokens[-1], "serve")
+        request = decode_controller_request(tokens[-2])
         self.assertEqual(request.target_id, "shell.read")
         self.assertEqual(request.argv, ("rg", "hook", "src"))
         self.assertEqual(request.operation_id, "tool-1")
@@ -275,9 +287,11 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         redirect = plan_pretool_route(patch_event, ROOT)
         self.assertEqual(redirect.behavior, "redirect")
         assert redirect.redirect_command is not None
+        redirect_tokens = strict_shell_tokens(redirect.redirect_command)
+        assert redirect_tokens is not None
         controller_event = _pre(
             "Bash",
-            {"command": redirect.redirect_command},
+            {"command": shlex.join((*redirect_tokens[:-1], "execute"))},
         )
         scope = {
             "activity": "implement",
@@ -338,7 +352,8 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         controller_argv = strict_shell_tokens(route.redirect_command)
         assert controller_argv is not None
         self.assertEqual(controller_argv[0], str(ROOT / ".venv/bin/python"))
-        request = decode_controller_request(controller_argv[-1])
+        self.assertEqual(controller_argv[-1], "serve")
+        request = decode_controller_request(controller_argv[-2])
         self.assertEqual(request.proposed_tool_name, "tool_exec")
         self.assertEqual(request.argv, ("git", "status"))
         self.assertEqual(request.tool_input, event.tool_input)
@@ -591,7 +606,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(specific["permissionDecision"], "deny")
         self.assertIn("no exact controller adapter", specific["permissionDecisionReason"])
 
-    def test_apply_patch_redirect_carries_exact_controller_command(self) -> None:
+    def test_apply_patch_redirect_carries_exact_code_mode_lifecycle(self) -> None:
         patch_event = _pre(
             "apply_patch",
             {"command": "*** Begin Patch\n*** Update File: justfile\n*** End Patch"},
@@ -605,17 +620,134 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             tool_use_id="controller-1",
         )
         controller_route = plan_pretool_route(controller_event, ROOT)
-        self.assertEqual((controller_route.category, controller_route.behavior), ("general", "direct"))
-        assert controller_route.semantic_event is not None
-        self.assertEqual(controller_route.semantic_event.tool_name, "apply_patch")
-        self.assertEqual(controller_route.semantic_event.tool_input, patch_event.tool_input)
+        self.assertEqual(
+            (controller_route.category, controller_route.behavior),
+            ("workbook-centric", "direct"),
+        )
+        self.assertIsNone(controller_route.semantic_event)
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
+        execute_event = _pre(
+            "Bash",
+            {"command": shlex.join((*serve_tokens[:-1], "execute"))},
+            tool_use_id="controller-2",
+        )
+        execute_route = plan_pretool_route(execute_event, ROOT)
+        self.assertEqual(
+            (execute_route.category, execute_route.behavior),
+            ("general", "direct"),
+        )
+        assert execute_route.semantic_event is not None
+        self.assertEqual(execute_route.semantic_event.tool_name, "apply_patch")
+        self.assertEqual(execute_route.semantic_event.tool_input, patch_event.tool_input)
+
+    def test_disposable_controller_emits_closed_code_mode_commands(self) -> None:
+        route = plan_pretool_route(_pre(), ROOT)
+        request = route.request
+        assert request is not None
+        binding = ControllerCodeModeBinding(
+            requestIdentity=request.identity,
+            workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
+            workbookDigest=digest_file(WORKBOOK_ROOT / "operation-controller.py"),
+            serverPID=123,
+            session={
+                "sessionID": "controller-session-1",
+                "workbookPath": str(WORKBOOK_ROOT / "operation-controller.py"),
+                "sessionMetadataDigest": digest_text("controller-session"),
+                "resolvedAtSequence": 0,
+            },
+        )
+        assert route.redirect_command is not None
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
+        document = _interaction_document(
+            binding,
+            self.data_dir / "binding.json",
+            ROOT,
+            serve_tokens[-2],
+        )
+        commands = document["commands"]
+        assert isinstance(commands, dict)
+        self.assertEqual(set(commands), {"inspect", "execute", "diagnose", "close"})
+        for operation, command in commands.items():
+            with self.subTest(operation=operation):
+                event = _pre(tool_input={"command": command})
+                interaction_route = plan_pretool_route(event, ROOT)
+                expected_category = (
+                    "general" if operation == "execute" else "workbook-centric"
+                )
+                self.assertEqual(
+                    (interaction_route.category, interaction_route.behavior),
+                    (expected_category, "direct"),
+                )
+                self.assertEqual(
+                    interaction_route.semantic_event is not None,
+                    operation == "execute",
+                )
+
+    def test_disposable_controller_starts_bound_marimo_code_mode(self) -> None:
+        route = plan_pretool_route(_pre(), ROOT)
+        request = route.request
+        assert request is not None
+        assert route.redirect_command is not None
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
+        session = SessionBinding(
+            sessionID="controller-session-1",
+            workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
+            sessionMetadataDigest=digest_text("controller-session"),
+            resolvedAtSequence=0,
+        )
+        process = Mock(pid=123)
+        with (
+            patch("operation_controller_cli._port_available", return_value=True),
+            patch(
+                "operation_controller_cli._wait_for_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("operation_controller_cli.subprocess.Popen", return_value=process) as popen,
+        ):
+            document = asyncio.run(
+                serve_controller(
+                    request,
+                    ROOT,
+                    self.data_dir / "controller-state",
+                    serve_tokens[-2],
+                )
+            )
+        command = popen.call_args.args[0]
+        self.assertIn("marimo", command)
+        mcp_index = command.index("--mcp")
+        self.assertEqual(command[mcp_index : mcp_index + 2], ["--mcp", "code-mode"])
+        self.assertEqual(document["state"], "ready")
+        self.assertTrue(Path(document["bindingPath"]).is_file())
+
+    def test_code_mode_templates_preserve_structured_receipts_and_read_only_diagnostics(
+        self,
+    ) -> None:
+        route = plan_pretool_route(_pre(), ROOT)
+        request = route.request
+        assert request is not None
+        execute_code = controller_execute_code(request)
+        inspect_code = controller_inspect_code(request, include_receipt=False)
+        diagnose_code = controller_inspect_code(request, include_receipt=True)
+        for source in (execute_code, inspect_code, diagnose_code):
+            compile(source, "<operation-controller-code-mode>", "exec")
+        self.assertIn("execute_controller_request", execute_code)
+        self.assertIn("model_dump", execute_code)
+        self.assertNotIn("edit_cell", execute_code)
+        self.assertNotIn("execute_controller_request", inspect_code)
+        self.assertIn("read_controller_receipt", diagnose_code)
+        self.assertNotIn("edit_cell", diagnose_code)
 
     def test_redirected_post_restores_original_semantic_action(self) -> None:
         event = _pre()
         route = plan_pretool_route(event, ROOT)
         assert route.redirect_command is not None
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
         controller_event = _pre(
-            tool_input={"command": route.redirect_command},
+            tool_input={"command": shlex.join((*serve_tokens[:-1], "execute"))},
             tool_use_id="controller-1",
         )
         controller_route = plan_pretool_route(controller_event, ROOT)
@@ -635,8 +767,10 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         event = _pre("tool_exec", {"argv": ["git", "status"], "yield-time_ms": 1000})
         route = plan_pretool_route(event, ROOT)
         assert route.redirect_command is not None
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
         controller_event = _pre(
-            tool_input={"command": route.redirect_command},
+            tool_input={"command": shlex.join((*serve_tokens[:-1], "execute"))},
             tool_use_id="controller-1",
         )
         effective_post = _post(controller_event, {"exit_code": 0})
@@ -691,7 +825,9 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         for field, value in mutations.items():
             with self.subTest(field=field):
                 tampered = request.model_copy(update={field: value})
-                command = shlex.join((*tokens[:-1], encode_controller_request(tampered)))
+                command = shlex.join(
+                    (*tokens[:-2], encode_controller_request(tampered), tokens[-1])
+                )
                 result = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
                 self.assertEqual((result.category, result.behavior), ("general", "redirect"))
                 self.assertIn("revalidation", result.reason)

@@ -25,9 +25,25 @@ The target workbook is the active experiment substrate and canonical interactive
 ## General actions
 
 Recognized atomic Bash and `tool_exec` actions are denied with the exact command
-that starts a fresh Marimo runtime from `src/cue-workbook/operation-controller.py`
-through `operation_controller_cli.py`. The agent must re-issue that command; the
-hook does not rewrite the original tool input.
+that instantiates a fresh, request-bound Marimo code-mode runtime from
+`src/cue-workbook/operation-controller.py` through
+`operation_controller_cli.py`. The agent must re-issue that command; the hook
+does not rewrite the original tool input.
+
+The instantiation command returns an exact-session binding and four closed
+follow-up commands:
+
+```text
+inspect     → request, graph identity, and cell errors
+execute     → one claim-protected effect and the complete structured receipt
+diagnose    → read-only cell outputs, errors, state identity, and receipt
+close       → terminate the disposable loopback-only runtime
+```
+
+Only `execute` is restored to the proposed semantic action for supervisory
+evidence. `inspect`, `diagnose`, and `close` remain workbook-centric lifecycle
+operations. The agent uses these exact commands instead of raw Marimo
+`execute_code` calls or a batch subprocess facade.
 
 The controller's reactive graph exposes:
 
@@ -72,7 +88,10 @@ Durable controller records live under Git's private metadata directory:
 $(git rev-parse --git-common-dir)/cuestrap-operation-controller/<operation-key>/
 ├── request.json
 ├── claim.json
-└── receipt.json
+├── receipt.json
+├── code-mode-binding.json
+├── code-mode.stdout.log
+└── code-mode.stderr.log
 ```
 
 The request and receipt make the disposable workbook reconstructable. The reactive DAG is the current causal view, not the sole append-only authority.
@@ -120,7 +139,7 @@ No Just recipe owns admission, tactical conclusions, execution identity, or shel
 
 The repository hook emits only supported wire responses:
 
-- `deny` with an actionable exact controller command for a required workbook reproposal or local provisional denial;
+- `deny` with an actionable exact code-mode instantiation command for a required workbook reproposal or local provisional denial;
 - no permission decision for direct or unclassified traffic;
 - diagnostic context without manufactured approval on adapter failure.
 

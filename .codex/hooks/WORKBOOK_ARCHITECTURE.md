@@ -50,16 +50,25 @@ closed identity-bound request
     → terminal receipt
 ```
 
-Both Bash and `tool_exec` are redirected to a fresh Marimo runtime by denying the
-original action with an exact controller-workbook command. Bash is admitted only
-when shell parsing and direct argv execution have identical meaning. Globs, brace
-expansion, substitutions, pipelines, redirections, compound syntax, and other
-expansion-dependent forms remain outside the controller vocabulary instead of
-being reinterpreted as literal argv.
+Both Bash and `tool_exec` are redirected to a fresh Marimo code-mode runtime by
+denying the original action with an exact controller-workbook instantiation
+command. The bound runtime returns exact `inspect`, `execute`, `diagnose`, and
+`close` commands. The agent voluntarily uses those constrained operations; the
+hook does not rewrite the original action or execute the effect itself. Bash is
+admitted only when shell parsing and direct argv execution have identical
+meaning. Globs, brace expansion, substitutions, pipelines, redirections,
+compound syntax, and other expansion-dependent forms remain outside the
+controller vocabulary instead of being reinterpreted as literal argv.
 
 Every request field—including session, turn, operation, working directory, timeout, target, semantic request digest, argv, and typed input—is covered by `requestIdentity` and revalidated before execution.
 
-Each action receives a fresh Marimo runtime. Canonical argv executes with `shell=False`; typed tool adapters handle operations that are not argv-native. Durable request, exclusive claim, and terminal receipt records make reactive reruns inert and make the disposable workbook reconstructable.
+Each action receives a fresh loopback-only Marimo code-mode runtime with an
+immutable exact-session binding. Canonical argv executes with `shell=False` from
+the workbook's constrained `execute` operation; typed tool adapters handle
+operations that are not argv-native. `inspect` and `diagnose` expose raw workbook
+state and the full receipt without repeating the effect. Durable request,
+binding, exclusive claim, and terminal receipt records make reactive reruns inert
+and make the disposable workbook reconstructable.
 
 The operation controller does not own tactical semantics, continuity, parent authorization, System A assessment, or joint outcome composition.
 

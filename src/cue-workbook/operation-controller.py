@@ -6,6 +6,7 @@ app = marimo.App(width="full")
 
 @app.cell
 def _():
+    import os
     from pathlib import Path
 
     import marimo as mo
@@ -13,54 +14,77 @@ def _():
     from supervisory_hooks.controller import (
         ControllerRequest,
         execute_controller_request,
+        read_controller_receipt,
     )
 
-    return ControllerRequest, Path, execute_controller_request, mo
+    return (
+        ControllerRequest,
+        Path,
+        execute_controller_request,
+        mo,
+        os,
+        read_controller_receipt,
+    )
 
 
 @app.cell
-def _():
-    execution_mode = "interactive"
-    repository_root = "."
-    controller_state_root = "."
-    controller_request = {}
-    return controller_request, controller_state_root, execution_mode, repository_root
+def _(ControllerRequest, os):
+    configured_request = os.environ.get("CUESTRAP_CONTROLLER_REQUEST")
+    if configured_request is None:
+        controller_request_model = None
+        controller_request = {}
+        repository_root = "."
+        controller_state_root = "."
+    else:
+        controller_request_model = ControllerRequest.model_validate_json(configured_request)
+        controller_request = controller_request_model.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_none=True,
+        )
+        repository_root = os.environ["CUESTRAP_CONTROLLER_REPOSITORY_ROOT"]
+        controller_state_root = os.environ["CUESTRAP_CONTROLLER_STATE_ROOT"]
+        expected_identity = os.environ["CUESTRAP_CONTROLLER_REQUEST_IDENTITY"]
+        if controller_request_model.identity != expected_identity:
+            raise ValueError("configured controller request identity mismatch")
+    return (
+        controller_request,
+        controller_request_model,
+        controller_state_root,
+        repository_root,
+    )
 
 
 @app.cell
 def _(
-    ControllerRequest,
     Path,
-    controller_request,
+    controller_request_model,
     controller_state_root,
-    execute_controller_request,
-    execution_mode,
+    read_controller_receipt,
     repository_root,
 ):
-    if execution_mode == "execute":
-        try:
-            request = ControllerRequest.model_validate(controller_request)
-            receipt = execute_controller_request(
-                request,
-                Path(repository_root),
-                Path(controller_state_root),
-            )
+    if controller_request_model is None:
+        execution_result = {
+            "schema": "cuestrap.operation-controller-result/v0",
+            "status": "unconfigured",
+        }
+    else:
+        receipt = read_controller_receipt(
+            controller_request_model,
+            Path(repository_root),
+            Path(controller_state_root),
+        )
+        if receipt is None:
+            execution_result = {
+                "schema": "cuestrap.operation-controller-result/v0",
+                "status": "pending",
+            }
+        else:
             execution_result = receipt.model_dump(
                 by_alias=True,
                 mode="json",
                 exclude_none=True,
             )
-        except Exception as error:
-            execution_result = {
-                "schema": "cuestrap.operation-controller-result/v0",
-                "status": "error",
-                "error": f"{type(error).__name__}: {error}",
-            }
-    else:
-        execution_result = {
-            "schema": "cuestrap.operation-controller-result/v0",
-            "status": "pending",
-        }
     return (execution_result,)
 
 
@@ -70,8 +94,9 @@ def _(controller_request, execution_result, mo):
         [
             mo.md("# Disposable operation controller"),
             mo.md(
-                "One fresh reactive runtime validates and executes one bounded general "
-                "action. Durable claim and receipt files make reactive reruns inert."
+                "Use the constrained code-mode client to inspect this bound request, "
+                "execute its effect once, and collect read-only diagnostics. Durable "
+                "claim and receipt files make execution reruns inert."
             ),
             mo.md("## Request"),
             mo.json(controller_request),

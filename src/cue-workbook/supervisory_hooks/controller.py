@@ -206,6 +206,34 @@ def _read_receipt(path: Path, request: ControllerRequest) -> ControllerReceipt:
     return receipt.model_copy(update={"status": "replayed"})
 
 
+def controller_operation_key(request: ControllerRequest) -> str:
+    """Return the stable private-state key for one controller request."""
+    return digest_text(
+        f"{request.session_id}\0{request.turn_id}\0{request.operation_id}"
+    ).removeprefix("sha256:")
+
+
+def controller_operation_directory(
+    request: ControllerRequest,
+    state_root: Path,
+) -> Path:
+    """Resolve the private runtime directory for one controller request."""
+    return state_root.resolve() / controller_operation_key(request)
+
+
+def read_controller_receipt(
+    request: ControllerRequest,
+    repository_root: Path,
+    state_root: Path,
+) -> ControllerReceipt | None:
+    """Read one terminal receipt without claiming or repeating the effect."""
+    validate_controller_request(request, repository_root.resolve(strict=True))
+    receipt_path = controller_operation_directory(request, state_root) / "receipt.json"
+    if not receipt_path.exists():
+        return None
+    return _read_receipt(receipt_path, request)
+
+
 def _claim(path: Path, request: ControllerRequest) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -308,10 +336,7 @@ def execute_controller_request(
     validate_controller_request(request, root)
     cwd = _bounded_cwd(root, request.working_directory)
 
-    operation_key = digest_text(
-        f"{request.session_id}\0{request.turn_id}\0{request.operation_id}"
-    ).removeprefix("sha256:")
-    operation_directory = state_root.resolve() / operation_key
+    operation_directory = controller_operation_directory(request, state_root)
     request_path = operation_directory / "request.json"
     claim_path = operation_directory / "claim.json"
     receipt_path = operation_directory / "receipt.json"
