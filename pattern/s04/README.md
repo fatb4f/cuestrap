@@ -25,13 +25,16 @@ outcome.
 
 ## Files
 
-- `semantic_ir.cue` defines the closed backend-neutral S04 v0 vocabulary and
+- `semantic_ir.cue` defines the backend-neutral S04 v0 vocabulary and the
   CUE-owned normalization/judgement relation.
 - `integrity.cue` proves graph references and authority roles.
-- `operation_constraints.cue` closes operation-kind-specific negative fields.
 - `ppf_profile.cue` defines the minimal Kattis-shaped package profile.
 - `projection_relation.cue` derives the total identity-bound projection.
 - `slice_output.cue` publishes the exact contract-bundle handoff.
+- `validation_witness.cue` and `qualification.cue` prove positive and
+  indeterminate semantic derivations.
+- `negative_validate.cue.txt`, `invalid_reference.cue.txt`, and
+  `invalid_projection.cue.txt` are expected-bottom qualification inputs.
 - `VALIDATION.md` records the pinned CUE qualification protocol.
 
 No LT-01 package instance or candidate fixture is included in this slice.
@@ -78,13 +81,17 @@ Normative source:
 This profile does not claim complete PPF conformance and does not import Kattis
 verdict vocabulary as S04 authority.
 
-## Narrow structural check
+## Narrow qualification
 
 From a repository environment with the pinned CUE toolchain:
 
 ```sh
 cue fmt --check pattern/s04/*.cue
-cue vet ./pattern/s04
+cue vet -c=false pattern/s04/*.cue
+cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text
+cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text
 ```
 
-The exact build and witness protocol is recorded in `VALIDATION.md`.
+The negative inputs must each bottom when copied to a `.cue` filename and vetted
+with the same package. The exact build and evidence protocol is recorded in
+`VALIDATION.md`.
