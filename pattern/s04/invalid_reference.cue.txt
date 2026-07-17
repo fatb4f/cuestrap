@@ -1,0 +1,30 @@
+package s04
+
+invalidReference: #RealizationIntegrity & {
+	realization: {
+		schema: "s04.cue-realization.v0"
+		realizationID: "invalid-reference"
+		title: "invalid reference"
+		authorities: {}
+		subjects: {}
+		claims: {}
+		expectedFacts: {}
+		normalizationRules: {}
+		comparisonRules: {}
+		capabilityRequirements: {}
+		plans: {}
+		cases: {
+			"case": {
+				caseID: "case"
+				groupID: "group"
+				planID: "missing-plan"
+				subjectIDs: ["missing-subject"]
+				expectedFactIDs: ["missing-fact"]
+				normalizationRuleIDs: ["missing-normalizer"]
+				comparisonRuleIDs: ["missing-comparison"]
+				requiredCapabilityIDs: ["missing-capability"]
+				outcomeConstraint: {permitted: ["indeterminate"]}
+			}
+		}
+	}
+}
