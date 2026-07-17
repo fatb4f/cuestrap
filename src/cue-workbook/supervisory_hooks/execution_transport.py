@@ -80,7 +80,7 @@ def _has_unquoted_shell_semantics(command: str) -> bool:
             return True
         if character == "#" and at_word_start:
             return True
-        if character == "~" and at_word_start:
+        if character == "~":
             return True
         at_word_start = False
     return escaped or quote is not None
@@ -160,24 +160,43 @@ def _python_script_index(argv: tuple[str, ...]) -> int | None:
     return None
 
 
-def is_exact_workbook_argv(argv: tuple[str, ...]) -> bool:
+def is_exact_workbook_argv(
+    argv: tuple[str, ...],
+    *,
+    repository_root: Path,
+    working_directory: Path | None = None,
+) -> bool:
     """Recognize an invocation of a workbook adapter, never a path mention."""
     if not argv:
         return False
+    root = repository_root.resolve(strict=True)
+    cwd = (working_directory or root).resolve(strict=False)
     if Path(argv[0]).name == "just":
-        return argv in {
-            ("just", "marimo-listener"),
-            ("just", "--justfile", "justfile", "marimo-listener"),
-        }
+        if argv == ("just", "marimo-listener"):
+            return cwd == root
+        if argv == ("just", "--justfile", "justfile", "marimo-listener"):
+            return (cwd / "justfile").resolve(strict=False) == root / "justfile"
+        return False
     script_index = _python_script_index(argv)
     if script_index is None or script_index >= len(argv):
         return False
-    script = Path(argv[script_index]).name
+    script_path = Path(argv[script_index])
+    if not script_path.is_absolute():
+        script_path = cwd / script_path
+    script_path = script_path.resolve(strict=False)
+    expected_root = root / "src/cue-workbook"
+    script = script_path.name
     tail = argv[script_index + 1 :]
     if script == "code_mode_client.py":
-        return bool(tail) and tail[0] in _WORKBOOK_CODE_MODE_ACTIONS
+        return (
+            script_path == expected_root / script
+            and bool(tail)
+            and tail[0] in _WORKBOOK_CODE_MODE_ACTIONS
+        )
     if script == "workbook_cli.py":
-        return any(flag in tail for flag in ("--validate", "--probe-request"))
+        return script_path == expected_root / script and any(
+            flag in tail for flag in ("--validate", "--probe-request")
+        )
     return False
 
 
@@ -185,12 +204,17 @@ def classify_execution_argv(
     argv: tuple[str, ...],
     *,
     repository_root: Path | None = None,
+    working_directory: Path | None = None,
 ) -> Classification:
     """Classify exact argv without interpreting arbitrary shell source."""
     if not argv:
         return Classification(recognized=False)
 
-    if is_exact_workbook_argv(argv):
+    if repository_root is not None and is_exact_workbook_argv(
+        argv,
+        repository_root=repository_root,
+        working_directory=working_directory,
+    ):
         script_index = _python_script_index(argv)
         if script_index is None:
             return Classification(recognized=False)

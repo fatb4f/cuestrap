@@ -116,7 +116,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         specific = response["hookSpecificOutput"]
         self.assertEqual(specific["permissionDecision"], "allow")
         updated = specific["updatedInput"]
-        self.assertEqual(updated["yield-time_ms"], 1000)
+        self.assertEqual(updated["yield_time_ms"], 1000)
         controller_argv = tuple(updated["argv"])
         self.assertEqual(controller_argv[0], str(ROOT / ".venv/bin/python"))
         request = decode_controller_request(controller_argv[-1])
@@ -158,6 +158,18 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                 route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
                 self.assertEqual((route.category, route.behavior), ("general", "rewrite"))
                 self.assertEqual(route.target_id, "workspace.mutation")
+
+    def test_workbook_adapter_basenames_outside_canonical_paths_are_not_direct(self) -> None:
+        for command in (
+            "python /tmp/code_mode_client.py capture-state",
+            "python attacker/workbook_cli.py --validate",
+        ):
+            with self.subTest(command=command):
+                route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
+                self.assertNotEqual(
+                    (route.category, route.behavior),
+                    ("workbook-centric", "direct"),
+                )
 
     def test_marimo_mcp_action_remains_direct(self) -> None:
         event = _pre(
@@ -273,6 +285,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             "rm *.tmp",
             "printf '%s\\n' {a,b}",
             "rg $PATTERN src",
+            "ls PATH=~/bin",
         ):
             with self.subTest(command=command):
                 self.assertIsNone(strict_shell_tokens(command))

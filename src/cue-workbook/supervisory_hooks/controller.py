@@ -28,8 +28,8 @@ WORKBOOK_TARGETS = frozenset(
 )
 
 
-class ControllerRequest(BaseModel):
-    """Closed request executed once by a fresh controller-workbook runtime."""
+class _ControllerRequestSubject(BaseModel):
+    """Canonical controller request fields covered by request identity."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
@@ -42,21 +42,14 @@ class ControllerRequest(BaseModel):
     turn_id: NonEmpty = Field(alias="turnID")
     target_id: TargetID = Field(alias="targetID")
     request_digest: Digest = Field(alias="requestDigest")
-    request_identity: Digest = Field(alias="requestIdentity")
     proposed_tool_name: NonEmpty = Field(alias="proposedToolName")
     working_directory: str = Field(alias="workingDirectory")
     timeout_seconds: int = Field(default=120, alias="timeoutSeconds", ge=1, le=600)
     argv: tuple[NonEmpty, ...] | None = None
     tool_input: object | None = Field(default=None, alias="toolInput")
 
-    @classmethod
-    def build(cls, **values: object) -> "ControllerRequest":
-        document = {"schema": CONTROLLER_SCHEMA, **values}
-        document["requestIdentity"] = digest_json(document)
-        return cls.model_validate(document)
-
     @model_validator(mode="after")
-    def validate_shape(self) -> "ControllerRequest":
+    def validate_shape(self) -> "_ControllerRequestSubject":
         path = Path(self.working_directory)
         if path.is_absolute() or ".." in path.parts:
             raise ValueError("working directory must be repository-relative")
@@ -78,6 +71,29 @@ class ControllerRequest(BaseModel):
         else:
             raise ValueError("unsupported controller tool")
 
+        return self
+
+
+class ControllerRequest(_ControllerRequestSubject):
+    """Closed request executed once by a fresh controller-workbook runtime."""
+
+    request_identity: Digest = Field(alias="requestIdentity")
+
+    @classmethod
+    def build(cls, **values: object) -> "ControllerRequest":
+        subject = _ControllerRequestSubject.model_validate(
+            {"schema": CONTROLLER_SCHEMA, **values}
+        )
+        document = subject.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude_none=True,
+        )
+        document["requestIdentity"] = digest_json(document)
+        return cls.model_validate(document)
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> "ControllerRequest":
         identity_subject = self.model_dump(
             by_alias=True,
             mode="json",
@@ -134,7 +150,11 @@ def validate_controller_request(request: ControllerRequest, repository_root: Pat
     lowered = request.proposed_tool_name.casefold()
     if lowered in {"bash", "tool_exec"}:
         assert request.argv is not None
-        classification = classify_execution_argv(request.argv, repository_root=repository_root)
+        classification = classify_execution_argv(
+            request.argv,
+            repository_root=repository_root,
+            working_directory=repository_root / request.working_directory,
+        )
     else:
         tool_name, tool_input = semantic_tool_input(request)
         classification = classify_tool(tool_name, tool_input, repository_root=repository_root)

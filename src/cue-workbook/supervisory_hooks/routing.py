@@ -78,10 +78,7 @@ def _controller_command(repository_root: Path, request: ControllerRequest) -> st
     return shlex.join(_controller_tokens(repository_root, request))
 
 
-def _request_from_controller_tokens(
-    tokens: tuple[str, ...],
-    repository_root: Path,
-) -> ControllerRequest | None:
+def _is_controller_invocation(tokens: tuple[str, ...], repository_root: Path) -> bool:
     root = repository_root.resolve()
     expected_prefix = (
         str(root / ".venv/bin/python"),
@@ -90,7 +87,17 @@ def _request_from_controller_tokens(
         str(root),
         "--payload",
     )
-    if len(tokens) != len(expected_prefix) + 1 or tokens[: len(expected_prefix)] != expected_prefix:
+    return (
+        len(tokens) == len(expected_prefix) + 1
+        and tokens[: len(expected_prefix)] == expected_prefix
+    )
+
+
+def _request_from_controller_tokens(
+    tokens: tuple[str, ...],
+    repository_root: Path,
+) -> ControllerRequest | None:
+    if not _is_controller_invocation(tokens, repository_root):
         return None
     try:
         return decode_controller_request(tokens[-1])
@@ -102,7 +109,11 @@ def _classification_for_request(request: ControllerRequest, repository_root: Pat
     lowered = request.proposed_tool_name.casefold()
     if lowered in _EXECUTION_TOOLS:
         assert request.argv is not None
-        return classify_execution_argv(request.argv, repository_root=repository_root)
+        return classify_execution_argv(
+            request.argv,
+            repository_root=repository_root,
+            working_directory=repository_root / request.working_directory,
+        )
     tool_name, tool_input = semantic_tool_input(request)
     return classify_tool(tool_name, tool_input, repository_root=repository_root)
 
@@ -155,11 +166,19 @@ def restore_posttool_event(
     )
 
 
-def _is_workbook_action(event: PreToolUseInput, invocation: ExecutionInvocation | None) -> bool:
+def _is_workbook_action(
+    event: PreToolUseInput,
+    invocation: ExecutionInvocation | None,
+    repository_root: Path,
+) -> bool:
     lowered = event.tool_name.casefold()
     if lowered.startswith(WORKBOOK_MCP_PREFIX):
         return True
-    return invocation is not None and is_exact_workbook_argv(invocation.argv)
+    return invocation is not None and is_exact_workbook_argv(
+        invocation.argv,
+        repository_root=repository_root,
+        working_directory=Path(event.cwd),
+    )
 
 
 def _build_execution_request(
@@ -201,9 +220,19 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
                     "input shape is outside the controller vocabulary"
                 ),
             )
-        if _is_workbook_action(event, invocation):
+        if _is_workbook_action(event, invocation, repository_root):
             return RoutePlan(category="workbook-centric", behavior="direct")
+        is_controller_invocation = _is_controller_invocation(
+            invocation.argv,
+            repository_root,
+        )
         request = _request_from_controller_tokens(invocation.argv, repository_root)
+        if is_controller_invocation and request is None:
+            return RoutePlan(
+                category="general",
+                behavior="redirect",
+                reason="controller payload failed full request and semantic revalidation",
+            )
         if request is not None:
             semantic_event = _semantic_pre_event(event, request, repository_root)
             if semantic_event is None:
@@ -220,13 +249,14 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
                 semantic_event=semantic_event,
             )
 
-    if _is_workbook_action(event, invocation):
+    if _is_workbook_action(event, invocation, repository_root):
         return RoutePlan(category="workbook-centric", behavior="direct")
 
     if invocation is not None:
         classification = classify_execution_argv(
             invocation.argv,
             repository_root=repository_root,
+            working_directory=Path(event.cwd),
         )
     else:
         classification = classify_tool(
