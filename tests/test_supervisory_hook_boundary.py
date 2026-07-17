@@ -15,18 +15,21 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 from supervisory_hooks.cli import main as hook_cli_main  # noqa: E402
+from supervisory_hooks.controller import execute_controller_request  # noqa: E402
 from supervisory_hooks.ledger import DurableLedger  # noqa: E402
 from supervisory_hooks.models import PostToolUseInput, PreToolUseInput  # noqa: E402
 from supervisory_hooks.policy import project_evidence  # noqa: E402
-from supervisory_hooks.recipe_runner import execute as execute_recipe  # noqa: E402
 from supervisory_hooks.routing import (  # noqa: E402
-    decode_recipe_request,
-    encode_recipe_request,
+    decode_controller_request,
+    encode_controller_request,
     plan_pretool_route,
     restore_posttool_event,
     strict_shell_tokens,
 )
 from supervisory_hooks.supervisor import Supervisor  # noqa: E402
+
+DIGEST_A = "sha256:" + "a" * 64
+DIGEST_B = "sha256:" + "b" * 64
 
 
 def _pre(
@@ -86,7 +89,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def test_general_bash_is_rewritten_to_digest_bound_just_recipe(self) -> None:
+    def test_general_bash_is_rewritten_to_disposable_controller_workbook(self) -> None:
         response = _run_wire(_pre(), self.data_dir / "wire")
         specific = response["hookSpecificOutput"]
         self.assertEqual(specific["permissionDecision"], "allow")
@@ -94,13 +97,13 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         tokens = strict_shell_tokens(updated["command"])
         self.assertIsNotNone(tokens)
         assert tokens is not None
-        self.assertEqual(
-            tokens[:4],
-            ("just", "--justfile", str(ROOT / "justfile"), "hook-shell-read"),
-        )
-        request = decode_recipe_request(tokens[4])
+        self.assertEqual(tokens[0], str(ROOT / ".venv/bin/python"))
+        self.assertEqual(tokens[1], str(ROOT / "src/cue-workbook/operation_controller_cli.py"))
+        self.assertEqual(tokens[2:5], ("--repository-root", str(ROOT), "--payload"))
+        request = decode_controller_request(tokens[-1])
         self.assertEqual(request.target_id, "shell.read")
         self.assertEqual(request.argv, ("rg", "hook", "src"))
+        self.assertEqual(request.operation_id, "tool-1")
         self.assertEqual(request.working_directory, ".")
 
     def test_workbook_bash_action_remains_direct(self) -> None:
@@ -125,35 +128,33 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
         self.assertEqual(_run_wire(event, self.data_dir / "marimo"), {})
 
-    def test_general_mcp_action_is_redirected_to_recipe_vocabulary(self) -> None:
+    def test_general_mcp_without_adapter_is_denied_explicitly(self) -> None:
         event = _pre("mcp__git_mcp_server__git_status", {})
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("general", "redirect"))
-        self.assertEqual(route.recipe_id, "hook-git-read")
         response = _run_wire(event, self.data_dir / "git-mcp")
         specific = response["hookSpecificOutput"]
         self.assertEqual(specific["permissionDecision"], "deny")
-        self.assertIn("hook-git-read", specific["permissionDecisionReason"])
+        self.assertIn("no controller adapter", specific["permissionDecisionReason"])
 
-    def test_apply_patch_redirect_carries_exact_canonical_recipe(self) -> None:
+    def test_apply_patch_redirect_carries_exact_controller_command(self) -> None:
         patch_event = _pre(
             "apply_patch",
             {"command": "*** Begin Patch\n*** Update File: justfile\n*** End Patch"},
         )
         route = plan_pretool_route(patch_event, ROOT)
         self.assertEqual((route.category, route.behavior), ("general", "redirect"))
-        self.assertEqual(route.recipe_id, "hook-apply-patch")
         self.assertIsNotNone(route.redirect_command)
-        recipe_event = _pre(
+        controller_event = _pre(
             "Bash",
             {"command": route.redirect_command},
-            tool_use_id="recipe-1",
+            tool_use_id="controller-1",
         )
-        recipe_route = plan_pretool_route(recipe_event, ROOT)
-        self.assertEqual((recipe_route.category, recipe_route.behavior), ("general", "direct"))
-        assert recipe_route.semantic_event is not None
-        self.assertEqual(recipe_route.semantic_event.tool_name, "apply_patch")
-        self.assertEqual(recipe_route.semantic_event.tool_input, patch_event.tool_input)
+        controller_route = plan_pretool_route(controller_event, ROOT)
+        self.assertEqual((controller_route.category, controller_route.behavior), ("general", "direct"))
+        assert controller_route.semantic_event is not None
+        self.assertEqual(controller_route.semantic_event.tool_name, "apply_patch")
+        self.assertEqual(controller_route.semantic_event.tool_input, patch_event.tool_input)
 
     def test_rewritten_post_restores_original_semantic_action(self) -> None:
         event = _pre()
@@ -169,41 +170,54 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(projection.observations[0].target_id, "shell.read")
         self.assertEqual(self.ledger.read_state().pending, {})
 
-    def test_recipe_runner_revalidates_and_executes_without_shell(self) -> None:
+    def test_controller_executes_once_and_replays_receipt(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
-        completed = Mock(returncode=0)
-        with patch("supervisory_hooks.recipe_runner.subprocess.run", return_value=completed) as run:
-            self.assertEqual(execute_recipe(request, ROOT), 0)
-        run.assert_called_once_with(["rg", "hook", "src"], cwd=ROOT, check=False)
+        completed = Mock(returncode=0, stdout="match\n", stderr="")
+        state_root = self.data_dir / "controller"
+        with (
+            patch("supervisory_hooks.controller.repository_state_digest", side_effect=[DIGEST_A, DIGEST_B]),
+            patch("supervisory_hooks.controller.subprocess.run", return_value=completed) as run,
+        ):
+            first = execute_controller_request(request, ROOT, state_root)
+            second = execute_controller_request(request, ROOT, state_root)
+        self.assertEqual(first.status, "completed")
+        self.assertEqual(second.status, "replayed")
+        self.assertEqual(first.return_code, 0)
+        self.assertEqual(first.stdout, "match\n")
+        run.assert_called_once_with(
+            ["rg", "hook", "src"],
+            cwd=ROOT,
+            check=False,
+            stdout=-1,
+            stderr=-1,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(len(tuple(state_root.glob("*/claim.json"))), 1)
+        self.assertEqual(len(tuple(state_root.glob("*/receipt.json"))), 1)
 
-    def test_tampered_recipe_payload_fails_semantic_revalidation(self) -> None:
+    def test_tampered_controller_payload_fails_semantic_revalidation(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
         tampered = request.model_copy(update={"request_digest": "sha256:" + "0" * 64})
-        command = shlex.join(
-            (
-                "just",
-                "--justfile",
-                str(ROOT / "justfile"),
-                route.recipe_id,
-                encode_recipe_request(tampered),
-            )
-        )
+        tokens = strict_shell_tokens(route.updated_input["command"])
+        assert tokens is not None
+        command = shlex.join((*tokens[:-1], encode_controller_request(tampered)))
         result = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
         self.assertEqual((result.category, result.behavior), ("general", "redirect"))
         self.assertIn("revalidation", result.reason)
 
-    def test_compound_shell_remains_outside_recipe_vocabulary(self) -> None:
+    def test_compound_shell_remains_outside_controller_vocabulary(self) -> None:
         event = _pre(tool_input={"command": "rg hook src | tee output.txt"})
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("unclassified", "neutral"))
         response = _run_wire(event, self.data_dir / "compound")
         specific = response["hookSpecificOutput"]
         self.assertNotIn("permissionDecision", specific)
-        self.assertIn("outside the closed recipe vocabulary", specific["additionalContext"])
+        self.assertIn("outside the controller vocabulary", specific["additionalContext"])
 
 
 if __name__ == "__main__":
