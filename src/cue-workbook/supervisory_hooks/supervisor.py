@@ -37,7 +37,7 @@ from .policy import (
     repository_state_digest,
 )
 
-_SHELL_PUNCTUATION = frozenset(";&|<>")
+_SHELL_PUNCTUATION = frozenset("();&|<>")
 
 
 def _approve_response() -> dict[str, object]:
@@ -90,7 +90,7 @@ def _ambiguous_shell_form(event: PreToolUseInput | PostToolUseInput) -> bool:
     if "\n" in command or any(marker in command for marker in ("`", "$(", "<(", ">(")):
         return True
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="();&|<>")
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = tuple(lexer)

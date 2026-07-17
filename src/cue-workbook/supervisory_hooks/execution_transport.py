@@ -1,8 +1,10 @@
 """Closed execution transport shared by Bash, tool_exec, and controller routing."""
 from __future__ import annotations
 
+import os
 import re
 import shlex
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -21,7 +23,7 @@ from .policy import (
 
 ExecutionTool = Literal["bash", "tool_exec"]
 _COMMAND_FIELDS = ("argv", "command", "cmd")
-_SHELL_PUNCTUATION = frozenset(";&|<>")
+_SHELL_PUNCTUATION = frozenset("();&|<>")
 _WORKBOOK_CODE_MODE_ACTIONS = frozenset(
     {
         "resolve-session",
@@ -91,7 +93,7 @@ def strict_shell_tokens(command: str) -> tuple[str, ...] | None:
     if not command.strip() or "\n" in command or _has_unquoted_shell_semantics(command):
         return None
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="();&|<>")
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = tuple(lexer)
@@ -150,13 +152,35 @@ def render_execution_input(
     return updated
 
 
-def _python_script_index(argv: tuple[str, ...]) -> int | None:
-    if len(argv) >= 2 and Path(argv[0]).name in {"python", "python3"}:
+def _lexical_executable_path(executable: str, cwd: Path) -> Path | None:
+    candidate = Path(executable)
+    if candidate.is_absolute() or len(candidate.parts) > 1:
+        return Path(os.path.abspath(cwd / candidate))
+    located = shutil.which(executable)
+    return Path(os.path.abspath(located)) if located is not None else None
+
+
+def _python_script_index(
+    argv: tuple[str, ...],
+    *,
+    repository_root: Path,
+    working_directory: Path,
+) -> int | None:
+    expected_python = Path(os.path.abspath(repository_root / ".venv/bin/python"))
+    executable = _lexical_executable_path(argv[0], working_directory) if argv else None
+    if len(argv) >= 2 and executable == expected_python:
         return 1
-    if argv and Path(argv[0]).name == "uv" and "--" in argv:
-        index = len(argv) - 1 - tuple(reversed(argv)).index("--")
-        if len(argv) > index + 2 and Path(argv[index + 1]).name in {"python", "python3"}:
-            return index + 2
+    expected_uv = _lexical_executable_path("uv", working_directory)
+    if (
+        len(argv) >= 9
+        and executable is not None
+        and executable == expected_uv
+        and argv[1:3] == ("run", "--project")
+        and Path(os.path.abspath(working_directory / argv[3])) == repository_root
+        and argv[4:7] == ("--locked", "--exact", "--")
+        and argv[7] == "python"
+    ):
+        return 8
     return None
 
 
@@ -177,7 +201,11 @@ def is_exact_workbook_argv(
         if argv == ("just", "--justfile", "justfile", "marimo-listener"):
             return (cwd / "justfile").resolve(strict=False) == root / "justfile"
         return False
-    script_index = _python_script_index(argv)
+    script_index = _python_script_index(
+        argv,
+        repository_root=root,
+        working_directory=cwd,
+    )
     if script_index is None or script_index >= len(argv):
         return False
     script_path = Path(argv[script_index])
@@ -215,7 +243,13 @@ def classify_execution_argv(
         repository_root=repository_root,
         working_directory=working_directory,
     ):
-        script_index = _python_script_index(argv)
+        root = repository_root.resolve(strict=True)
+        cwd = (working_directory or root).resolve(strict=False)
+        script_index = _python_script_index(
+            argv,
+            repository_root=root,
+            working_directory=cwd,
+        )
         if script_index is None:
             return Classification(recognized=False)
         script = Path(argv[script_index]).name

@@ -149,6 +149,18 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
 
+    def test_exact_uv_workbook_action_remains_direct(self) -> None:
+        event = _pre(
+            tool_input={
+                "command": (
+                    "uv run --project . --locked --exact -- python "
+                    "src/cue-workbook/code_mode_client.py capture-state"
+                )
+            }
+        )
+        route = plan_pretool_route(event, ROOT)
+        self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
+
     def test_workbook_filename_mentions_do_not_bypass_controller(self) -> None:
         for command in (
             "rm src/cue-workbook/code_mode_client.py",
@@ -170,6 +182,25 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                     (route.category, route.behavior),
                     ("workbook-centric", "direct"),
                 )
+
+    def test_workbook_executor_basenames_outside_admitted_chain_are_not_direct(self) -> None:
+        adapter = ROOT / "src/cue-workbook/code_mode_client.py"
+        for command in (
+            f"/tmp/python {adapter} capture-state",
+            f"/tmp/python3 {adapter} capture-state",
+            f"/tmp/uv -- /tmp/python {adapter} capture-state",
+            (
+                f"/tmp/uv run --project . --locked --exact -- python "
+                f"{adapter} capture-state"
+            ),
+            (
+                f"uv run --project . --locked --exact -- /tmp/python "
+                f"{adapter} capture-state"
+            ),
+        ):
+            with self.subTest(command=command):
+                route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
+                self.assertEqual((route.category, route.behavior), ("unclassified", "neutral"))
 
     def test_marimo_mcp_action_remains_direct(self) -> None:
         event = _pre(
@@ -291,6 +322,22 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                 self.assertIsNone(strict_shell_tokens(command))
                 route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
                 self.assertEqual((route.category, route.behavior), ("unclassified", "neutral"))
+
+    def test_shell_parentheses_are_not_reinterpreted_as_literal_argv(self) -> None:
+        for command in (
+            "rg (foo) src",
+            "rm (target)",
+            "printf foo(bar)",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(strict_shell_tokens(command))
+                route = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
+                self.assertEqual((route.category, route.behavior), ("unclassified", "neutral"))
+
+        quoted = "rg '(foo)' src"
+        self.assertEqual(strict_shell_tokens(quoted), ("rg", "(foo)", "src"))
+        route = plan_pretool_route(_pre(tool_input={"command": quoted}), ROOT)
+        self.assertEqual((route.category, route.behavior), ("general", "rewrite"))
 
     def test_compound_shell_remains_outside_controller_vocabulary(self) -> None:
         event = _pre(tool_input={"command": "rg hook src | tee output.txt"})
