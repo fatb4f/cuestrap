@@ -220,7 +220,9 @@ package s04
 	"capability-absent" |
 	"invalid-observation"
 
-#ObservationRecord: close({
+// Definition closure preserves the outer vocabulary without recursively
+// sealing the record when it is nested under #JudgementIngress.
+#ObservationRecord: {
 	schema:              "s04.observation-record.v0"
 	observationID:       #SafeID
 	caseID:              #SafeID
@@ -234,7 +236,7 @@ package s04
 		facts:       close({})
 		diagnostics: [#Diagnostic, ...#Diagnostic]
 	}
-})
+}
 
 #ComparisonResult: close({
 	ruleID:           #SafeID
