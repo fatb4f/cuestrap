@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKBOOK_ROOT = ROOT / "src/cue-workbook"
@@ -64,6 +64,7 @@ class WorkbookMcpServerTests(unittest.IsolatedAsyncioTestCase):
                 "capture_state",
                 "run_probe",
                 "apply_transaction",
+                "execute_realization",
                 "bind_operation",
                 "inspect_operation",
                 "execute_operation",
@@ -76,6 +77,20 @@ class WorkbookMcpServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(schema["additionalProperties"])
             self.assertNotIn("command", schema["properties"])
             self.assertNotIn("payload", schema["properties"])
+
+    async def test_execute_realization_consumes_only_a_package_coordinate(self) -> None:
+        result = {
+            "schema": "cuestrap.s04-package-run/v0",
+            "packageID": "s04.lt-01",
+        }
+        with patch("workbook_mcp_server.execute_s04_package", return_value=result) as execute:
+            observed = await self.server.call(
+                "execute_realization",
+                {"packagePath": "tests/fixtures/s04-lt01-package.json"},
+            )
+
+        self.assertEqual(observed, result)
+        execute.assert_called_once_with(ROOT, "tests/fixtures/s04-lt01-package.json")
 
     async def test_bind_operation_consumes_structured_request(self) -> None:
         request = _request()
@@ -116,7 +131,7 @@ class WorkbookMcpServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(called_request, request)
         self.assertEqual(called_binding, binding)
 
-    async def test_initialize_describes_raw_observation_boundary(self) -> None:
+    async def test_initialize_describes_raw_and_judgement_boundaries(self) -> None:
         response = await self.server.handle(
             {
                 "jsonrpc": "2.0",
@@ -129,6 +144,7 @@ class WorkbookMcpServerTests(unittest.IsolatedAsyncioTestCase):
         result = response["result"]
         self.assertEqual(result["serverInfo"]["name"], "cuestrap-workbook")
         self.assertIn("raw observations", result["instructions"])
+        self.assertIn("CUE judge output", result["instructions"])
 
 
 if __name__ == "__main__":
