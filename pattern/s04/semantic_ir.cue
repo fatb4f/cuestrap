@@ -1,7 +1,5 @@
 package s04
 
-import "list"
-
 // S04 v0 semantic realization intermediate representation.
 //
 // This package defines semantic contracts only. Runners and transports emit raw
@@ -310,17 +308,13 @@ import "list"
 	_observerAuthority: realization.authorities[ingress.observation.observerAuthorityID] & {
 		role: "raw-observer"
 	}
-
-	ingress: {
-		normalizationRuleIDs: _case.normalizationRuleIDs
-		comparisonRuleIDs:    _case.comparisonRuleIDs
-		observation: {
-			caseID: ingress.caseID
-		}
-	}
+	_caseIDMatch:             ingress.observation.caseID & ingress.caseID
+	_normalizationRulesMatch: ingress.normalizationRuleIDs & _case.normalizationRuleIDs
+	_comparisonRulesMatch:    ingress.comparisonRuleIDs & _case.comparisonRuleIDs
 
 	_normalizedFacts:   {}
 	_comparisonResults: {}
+	_unmatchedRuleIDs:  [...#SafeID]
 	_allMatched:        bool
 
 	if ingress.observation.state == "facts-observed" {
@@ -355,12 +349,14 @@ import "list"
 			}
 		})
 
-		_allMatched: list.And([for _, Result in _comparisonResults {Result.matched}])
+		_unmatchedRuleIDs: [for RuleID, Result in _comparisonResults if Result.matched == false {RuleID}]
+		_allMatched:       len(_unmatchedRuleIDs) == 0
 	}
 
 	if ingress.observation.state != "facts-observed" {
 		_normalizedFacts:   close({})
 		_comparisonResults: close({})
+		_unmatchedRuleIDs:  []
 		_allMatched:        false
 	}
 
