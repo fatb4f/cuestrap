@@ -89,27 +89,30 @@ import "list"
 	"right-to-left" |
 	"subject-only"
 
-#PrimitiveOperation: close({
-	operationID: #SafeID
-	kind:        #PrimitiveOperationKind
-	left:        #SubjectRef
-	right?:      #SubjectRef
-	direction:   #OperationDirection
-	produces:    [#SafeID, ...#SafeID]
-
-	if kind == "unify" {
-		right:     #SubjectRef
-		direction: "symmetric"
-	}
-	if kind == "subsumes" {
-		right:     #SubjectRef
-		direction: "left-to-right" | "right-to-left"
-	}
-	if kind == "validate" {
-		right?:    _|_
-		direction: "subject-only"
-	}
-})
+#PrimitiveOperation:
+	close({
+		operationID: #SafeID
+		kind:        "unify"
+		left:        #SubjectRef
+		right:       #SubjectRef
+		direction:   "symmetric"
+		produces:    [#SafeID, ...#SafeID]
+	}) |
+	close({
+		operationID: #SafeID
+		kind:        "subsumes"
+		left:        #SubjectRef
+		right:       #SubjectRef
+		direction:   "left-to-right" | "right-to-left"
+		produces:    [#SafeID, ...#SafeID]
+	}) |
+	close({
+		operationID: #SafeID
+		kind:        "validate"
+		left:        #SubjectRef
+		direction:   "subject-only"
+		produces:    [#SafeID, ...#SafeID]
+	})
 
 #OperationPlan: close({
 	planID:     #SafeID
@@ -286,9 +289,10 @@ import "list"
 	comparisonRuleIDs:          [#SafeID, ...#SafeID]
 })
 
-// #JudgementDerivation is the semantic constructor. CUE normalizes raw facts,
-// evaluates comparisons, and derives the final semantic outcome.
-#JudgementDerivation: close({
+// #JudgementDerivation is an internal semantic relation, not an ingress schema.
+// Its caller-controlled fields are closed by their own definitions; its derived
+// fields remain visible for evaluation and evidence export.
+#JudgementDerivation: {
 	realization: #CueRealization
 	ingress:     #JudgementIngress
 
@@ -394,7 +398,7 @@ import "list"
 			outcome: "rejected"
 		}
 	}
-})
+}
 
 #CueRealization: close({
 	schema:        "s04.cue-realization.v0"
