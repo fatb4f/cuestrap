@@ -31,7 +31,7 @@ jobs:
           cache: false
 
       - name: Bootstrap the CUE lock reader
-        run: go install cuelang.org/go/cmd/cue@v0.18.0
+        run: go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
 
       - name: Build pinned tool archives
         id: bundle
@@ -61,7 +61,7 @@ jobs:
 
           root = pathlib.Path(sys.argv[1])
           manifest = json.loads(
-              (root / "share" / "cuestrap" / "manifest.json").read_text()
+            (root / "share" / "cuestrap" / "manifest.json").read_text()
           )
           for entry in manifest["files"]:
               payload = (root / entry["path"]).read_bytes()
