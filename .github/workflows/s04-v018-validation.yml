@@ -1,0 +1,82 @@
+name: s04 cue v0.18 validation
+
+on:
+  push:
+    branches:
+      - agent/issue-13-cue-v018-validation-3
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-s04-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.5"
+          cache: false
+
+      - name: Build pinned CUE CLI
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/cue" version | tee "$RUNNER_TEMP/cue-version.txt"
+          grep -q 'v0.18' "$RUNNER_TEMP/cue-version.txt"
+
+      - name: Validate completed contract package
+        run: |
+          cue fmt --check pattern/s04/*.cue | tee "$RUNNER_TEMP/fmt.stdout"
+          test ! -s "$RUNNER_TEMP/fmt.stdout"
+          cue vet -c=false pattern/s04/*.cue | tee "$RUNNER_TEMP/vet.stdout"
+          cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text | tee "$RUNNER_TEMP/positive.stdout"
+          cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text | tee "$RUNNER_TEMP/indeterminate.stdout"
+          cue eval pattern/s04/*.cue -e sliceOutput --out json > "$RUNNER_TEMP/slice-output.json"
+          test "$(cat "$RUNNER_TEMP/positive.stdout")" = 'satisfied'
+          test "$(cat "$RUNNER_TEMP/indeterminate.stdout")" = 'indeterminate'
+          test "$(cue eval pattern/s04/*.cue -e sliceOutput.qualification.disposition --out text)" = 'qualified'
+          test "$(cue eval pattern/s04/*.cue -e sliceOutput.sourceSetDigest --out text)" = 'sha256:95b7bc6342dff95727fbbb1ee65c42a9c743e2312b1bccb846f9137ea03d21f3'
+          test "$(cue eval pattern/s04/*.cue -e sliceOutput.qualification.evidenceDigest --out text)" = 'sha256:86a7b3fa2dac8608032356353fcd5667910a223c58b62a1c270fcb9eb9b59fce'
+
+      - name: Prove negative operation constraint
+        run: |
+          cp pattern/s04/negative_validate.cue.txt pattern/s04/zz_negative_validate.cue
+          if cue vet -c=false pattern/s04/*.cue >"$RUNNER_TEMP/negative-validate.stdout" 2>"$RUNNER_TEMP/negative-validate.stderr"; then
+            echo 'binary validate unexpectedly qualified' >&2
+            exit 1
+          fi
+          rm pattern/s04/zz_negative_validate.cue
+
+      - name: Prove negative reference constraint
+        run: |
+          cp pattern/s04/invalid_reference.cue.txt pattern/s04/zz_invalid_reference.cue
+          if cue vet -c=false pattern/s04/*.cue >"$RUNNER_TEMP/invalid-reference.stdout" 2>"$RUNNER_TEMP/invalid-reference.stderr"; then
+            echo 'foreign semantic references unexpectedly qualified' >&2
+            exit 1
+          fi
+          rm pattern/s04/zz_invalid_reference.cue
+
+      - name: Prove negative projection constraint
+        run: |
+          cp pattern/s04/invalid_projection.cue.txt pattern/s04/zz_invalid_projection.cue
+          if cue vet -c=false pattern/s04/*.cue >"$RUNNER_TEMP/invalid-projection.stdout" 2>"$RUNNER_TEMP/invalid-projection.stderr"; then
+            echo 'foreign projection case unexpectedly qualified' >&2
+            exit 1
+          fi
+          rm pattern/s04/zz_invalid_projection.cue
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s04-cue-v018-manifest-verification
+          path: |
+            ${{ runner.temp }}/cue-version.txt
+            ${{ runner.temp }}/slice-output.json
+            ${{ runner.temp }}/*.stdout
+            ${{ runner.temp }}/*.stderr
+          if-no-files-found: warn
