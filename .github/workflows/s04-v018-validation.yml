@@ -6,7 +6,7 @@ on:
       - agent/issue-13-cue-v018-validation-1
   pull_request:
     branches:
-      - agent/issue-13-s04-ppf-contract
+      - main
 
 permissions:
   contents: read
@@ -30,11 +30,29 @@ jobs:
 
       - name: Validate positive contract package
         run: |
-          cue fmt --check pattern/s04/*.cue
-          cue vet pattern/s04/*.cue
-          test "$(cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text)" = 'satisfied'
-          test "$(cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text)" = 'indeterminate'
-          cue eval pattern/s04/*.cue -e sliceOutput --out json > "$RUNNER_TEMP/slice-output.json"
+          set +e
+          cue fmt --check pattern/s04/*.cue >"$RUNNER_TEMP/fmt.stdout" 2>"$RUNNER_TEMP/fmt.stderr"
+          fmt_status=$?
+          cue vet pattern/s04/*.cue >"$RUNNER_TEMP/vet.stdout" 2>"$RUNNER_TEMP/vet.stderr"
+          vet_status=$?
+          cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text >"$RUNNER_TEMP/positive.stdout" 2>"$RUNNER_TEMP/positive.stderr"
+          positive_status=$?
+          cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text >"$RUNNER_TEMP/indeterminate.stdout" 2>"$RUNNER_TEMP/indeterminate.stderr"
+          indeterminate_status=$?
+          cue eval pattern/s04/*.cue -e sliceOutput --out json >"$RUNNER_TEMP/slice-output.json" 2>"$RUNNER_TEMP/slice-output.stderr"
+          slice_status=$?
+          set -e
+          cat "$RUNNER_TEMP/fmt.stderr" >&2
+          cat "$RUNNER_TEMP/vet.stderr" >&2
+          cat "$RUNNER_TEMP/positive.stderr" >&2
+          cat "$RUNNER_TEMP/indeterminate.stderr" >&2
+          test "$fmt_status" -eq 0
+          test "$vet_status" -eq 0
+          test "$positive_status" -eq 0
+          test "$indeterminate_status" -eq 0
+          test "$slice_status" -eq 0
+          test "$(cat "$RUNNER_TEMP/positive.stdout")" = 'satisfied'
+          test "$(cat "$RUNNER_TEMP/indeterminate.stdout")" = 'indeterminate'
 
       - name: Prove negative operation constraint
         run: |
