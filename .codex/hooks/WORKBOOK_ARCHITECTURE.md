@@ -8,11 +8,13 @@ The architecture uses three distinct Marimo workbooks with different targets, au
 |---|---|---|
 | Main CUEstrap workbook | Long-lived | System A target and interactive experiment surface |
 | Rollout/JSONL controller workbook | Session- or rollout-scoped disposable | System B observation, normalization, correlation, and prospective control frame |
-| Operation-controller workbook | One bounded general action | One-use shell/tool execution and durable receipts |
+| Operation-controller workbook | One bounded general action | One-use Bash, `tool_exec`, or typed-tool execution and durable receipts |
 
 ## Main CUEstrap workbook
 
 The main workbook remains the target-workbook surface. Existing Marimo code-mode, constrained client, and workbook CLI operations continue to act directly on it.
+
+Direct routing is structural: a command must invoke the exact workbook adapter and admitted operation. Merely mentioning `code_mode_client.py` or `workbook_cli.py` as a file operand does not make an action workbook-centric.
 
 It owns the interactive CUEstrap experiment and implementation state. It does not supervise, authorize, or assess its own mutations.
 
@@ -35,18 +37,22 @@ This workbook is deferred beyond PR #11.
 
 ## Operation-controller workbook
 
-PR #11 implements the operation-scoped executor for recognized general shell/tool actions.
+PR #11 implements the operation-scoped executor for recognized general Bash and `tool_exec` actions, plus exact typed adapters such as `apply_patch`.
 
 ```text
-closed request
+closed identity-bound request
     → semantic revalidation
     → bounded working directory
     → pre-state projection
     → one-use claim
-    → shell/tool effect
+    → shell-free argv or typed-tool effect
     → post-state projection
     → terminal receipt
 ```
+
+Both Bash and `tool_exec` are rewritten to a fresh Marimo runtime. Bash is admitted only when shell parsing and direct argv execution have identical meaning. Globs, brace expansion, substitutions, pipelines, redirections, compound syntax, and other expansion-dependent forms remain outside the controller vocabulary instead of being reinterpreted as literal argv.
+
+Every request field—including session, turn, operation, working directory, timeout, target, semantic request digest, argv, and typed input—is covered by `requestIdentity` and revalidated before execution.
 
 Each action receives a fresh Marimo runtime. Canonical argv executes with `shell=False`; typed tool adapters handle operations that are not argv-native. Durable request, exclusive claim, and terminal receipt records make reactive reruns inert and make the disposable workbook reconstructable.
 
