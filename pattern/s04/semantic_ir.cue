@@ -6,10 +6,10 @@ package s04
 // observations; they do not author semantic satisfaction or rejection.
 
 #NonEmptyString: string & !=""
-#SafeID: #NonEmptyString & =~"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
-#Digest: #NonEmptyString & =~"^sha256:[0-9a-f]{64}$"
-#RelativePath: #NonEmptyString & !~"^/" & !~"(^|/)\\.\\.(/|$)"
-#FactValue: bool | number | string
+#SafeID:         #NonEmptyString & =~"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+#Digest:         #NonEmptyString & =~"^sha256:[0-9a-f]{64}$"
+#RelativePath:   #NonEmptyString & !~"^/" & !~"(^|/)\\.\\.(/|$)"
+#FactValue:      bool | number | string
 
 #EvaluatorIdentity: close({
 	cueRevision:     "806821e40fae070318600a264d311517e596353b"
@@ -20,14 +20,14 @@ package s04
 
 #AuthorityRole:
 	"semantic-authority" |
-	"package-declarer" |
-	"raw-observer"
+		"package-declarer" |
+		"raw-observer"
 
 #AuthoritySourceKind:
 	"cue-module" |
-	"problem-package" |
-	"native-runner" |
-	"process-runner"
+		"problem-package" |
+		"native-runner" |
+		"process-runner"
 
 #AuthorityBinding: close({
 	authorityID: #SafeID
@@ -72,20 +72,20 @@ package s04
 })
 
 #SubjectRef: close({
-	subjectID:         #SafeID
+	subjectID:          #SafeID
 	materializationID?: #SafeID
 })
 
 #PrimitiveOperationKind:
 	"unify" |
-	"subsumes" |
-	"validate"
+		"subsumes" |
+		"validate"
 
 #OperationDirection:
 	"symmetric" |
-	"left-to-right" |
-	"right-to-left" |
-	"subject-only"
+		"left-to-right" |
+		"right-to-left" |
+		"subject-only"
 
 #PrimitiveOperation:
 	close({
@@ -96,21 +96,21 @@ package s04
 		direction:   "symmetric"
 		produces:    [#SafeID, ...#SafeID]
 	}) |
-	close({
-		operationID: #SafeID
-		kind:        "subsumes"
-		left:        #SubjectRef
-		right:       #SubjectRef
-		direction:   "left-to-right" | "right-to-left"
-		produces:    [#SafeID, ...#SafeID]
-	}) |
-	close({
-		operationID: #SafeID
-		kind:        "validate"
-		left:        #SubjectRef
-		direction:   "subject-only"
-		produces:    [#SafeID, ...#SafeID]
-	})
+		close({
+			operationID: #SafeID
+			kind:        "subsumes"
+			left:        #SubjectRef
+			right:       #SubjectRef
+			direction:   "left-to-right" | "right-to-left"
+			produces:    [#SafeID, ...#SafeID]
+		}) |
+		close({
+			operationID: #SafeID
+			kind:        "validate"
+			left:        #SubjectRef
+			direction:   "subject-only"
+			produces:    [#SafeID, ...#SafeID]
+		})
 
 #OperationPlan: close({
 	planID:     #SafeID
@@ -170,7 +170,7 @@ package s04
 
 #ComparisonOperator:
 	"equals" |
-	"not-equals"
+		"not-equals"
 
 #ComparisonRule: close({
 	ruleID:           #SafeID
@@ -181,15 +181,15 @@ package s04
 })
 
 #BackendCapabilityRequirement: close({
-	capabilityID:  #SafeID
+	capabilityID:   #SafeID
 	operationKinds: [#PrimitiveOperationKind, ...#PrimitiveOperationKind]
-	required:      true
+	required:       true
 })
 
 #SemanticOutcome:
 	"satisfied" |
-	"rejected" |
-	"indeterminate"
+		"rejected" |
+		"indeterminate"
 
 #OutcomeConstraint: close({
 	permitted: [#SemanticOutcome, ...#SemanticOutcome]
@@ -216,9 +216,9 @@ package s04
 
 #ObservationState:
 	"facts-observed" |
-	"transport-failure" |
-	"capability-absent" |
-	"invalid-observation"
+		"transport-failure" |
+		"capability-absent" |
+		"invalid-observation"
 
 // Definition closure preserves the outer vocabulary without recursively
 // sealing the record when it is nested under #JudgementIngress.
@@ -229,8 +229,8 @@ package s04
 	observerAuthorityID: #SafeID
 	sourceRecordDigest:  #Digest
 	state:               #ObservationState
-	facts:               [FactID=#SafeID]: #ObservationFact & {factID: FactID}
-	diagnostics?:        [#Diagnostic, ...#Diagnostic]
+	facts: [FactID=#SafeID]: #ObservationFact & {factID: FactID}
+	diagnostics?: [#Diagnostic, ...#Diagnostic]
 
 	if state != "facts-observed" {
 		facts:       close({})
@@ -262,9 +262,9 @@ package s04
 	observationDigest:       #Digest
 	normalizedFactSet:       #NormalizedFactSet
 	comparisonRuleSetDigest: #Digest
-	comparisonResults:       [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
-	outcome:                 #SemanticOutcome
-	diagnostics?:            [#Diagnostic, ...#Diagnostic]
+	comparisonResults: [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
+	outcome:      #SemanticOutcome
+	diagnostics?: [#Diagnostic, ...#Diagnostic]
 })
 
 // #JudgementIngress is a definition-closed caller contract. It deliberately
