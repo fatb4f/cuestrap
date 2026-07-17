@@ -265,10 +265,10 @@ package s04
 	diagnostics?:            [#Diagnostic, ...#Diagnostic]
 })
 
-// #JudgementIngress is the only caller-supplied judgement request. Mechanical
-// digests are supplied by the framing controller; comparison results and the
-// semantic outcome are absent and are derived only by CUE.
-#JudgementIngress: close({
+// #JudgementIngress is a definition-closed caller contract. It deliberately
+// avoids recursive close() so the nested observation remains instantiable while
+// the outer field vocabulary is still closed by definition semantics.
+#JudgementIngress: {
 	requestID:                  #SafeID
 	judgementID:                #SafeID
 	derivationInputDigest:      #Digest
@@ -285,7 +285,7 @@ package s04
 	comparisonRuleSetDigest:    #Digest
 	normalizationRuleIDs:       [#SafeID, ...#SafeID]
 	comparisonRuleIDs:          [#SafeID, ...#SafeID]
-})
+}
 
 // #JudgementDerivation is an internal semantic relation, not an ingress schema.
 // Its caller-controlled fields are closed by their own definitions; its derived
