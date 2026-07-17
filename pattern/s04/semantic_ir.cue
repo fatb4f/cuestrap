@@ -13,6 +13,13 @@ import "list"
 #RelativePath: #NonEmptyString & !~"^/" & !~"(^|/)\\.\\.(/|$)"
 #FactValue: bool | number | string
 
+#EvaluatorIdentity: close({
+	cueRevision:     "806821e40fae070318600a264d311517e596353b"
+	languageVersion: "v0.18.0"
+	relationID:      "s04.derive-semantic-judgement.v0"
+	facadeDigest:    #Digest
+})
+
 #AuthorityRole:
 	"semantic-authority" |
 	"package-declarer" |
@@ -132,16 +139,43 @@ import "list"
 	sourceRecordDigest: #Digest
 })
 
+#NormalizationRule: close({
+	ruleID:              #SafeID
+	observationFactID:   #SafeID
+	normalizedFactID:    #SafeID
+	normalizedPredicate: #SafeID
+})
+
+#NormalizedFact: close({
+	factID:                  #SafeID
+	normalizationRuleID:     #SafeID
+	observationFactID:       #SafeID
+	predicate:               #SafeID
+	value:                   #FactValue
+	sourceObservationDigest: #Digest
+})
+
+#NormalizedFactSet: close({
+	schema:                     "s04.normalized-fact-set.v0"
+	factSetID:                  #SafeID
+	factSetDigest:              #Digest
+	normalizationRuleSetDigest: #Digest
+	sourceObservationDigest:    #Digest
+	facts: [FactID=#SafeID]: #NormalizedFact & {
+		factID: FactID
+	}
+})
+
 #ComparisonOperator:
 	"equals" |
 	"not-equals"
 
 #ComparisonRule: close({
-	ruleID:            #SafeID
-	expectedFactID:    #SafeID
-	observationFactID: #SafeID
-	operator:          #ComparisonOperator
-	resultPredicate:   #SafeID
+	ruleID:           #SafeID
+	expectedFactID:   #SafeID
+	normalizedFactID: #SafeID
+	operator:         #ComparisonOperator
+	resultPredicate:  #SafeID
 })
 
 #BackendCapabilityRequirement: close({
@@ -166,6 +200,7 @@ import "list"
 	planID:                #SafeID
 	subjectIDs:            [#SafeID, ...#SafeID]
 	expectedFactIDs:       [#SafeID, ...#SafeID]
+	normalizationRuleIDs:  [#SafeID, ...#SafeID]
 	comparisonRuleIDs:     [#SafeID, ...#SafeID]
 	requiredCapabilityIDs: [#SafeID, ...#SafeID]
 	outcomeConstraint:     #OutcomeConstraint
@@ -200,81 +235,133 @@ import "list"
 })
 
 #ComparisonResult: close({
-	ruleID:            #SafeID
-	expectedFactID:    #SafeID
-	observationFactID: #SafeID
-	matched:           bool
+	ruleID:           #SafeID
+	expectedFactID:   #SafeID
+	normalizedFactID: #SafeID
+	expectedValue:    #FactValue
+	observedValue:    #FactValue
+	matched:          bool
 })
 
 #SemanticJudgement: close({
-	schema:              "s04.semantic-judgement.v0"
-	derivationRelation:  "s04.derive-semantic-judgement.v0"
-	judgementID:         #SafeID
-	realizationID:       #SafeID
-	caseID:              #SafeID
-	semanticAuthorityID: #SafeID
-	packageDigest:       #Digest
-	candidateDigest:     #Digest
-	observationDigest:   #Digest
-	comparisonResults:   [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
-	outcome:             #SemanticOutcome
-	diagnostics?:        [#Diagnostic, ...#Diagnostic]
+	schema:                  "s04.semantic-judgement.v0"
+	derivationRelation:      "s04.derive-semantic-judgement.v0"
+	judgementID:             #SafeID
+	derivationInputDigest:   #Digest
+	evaluator:               #EvaluatorIdentity
+	realizationID:           #SafeID
+	realizationDigest:       #Digest
+	caseID:                  #SafeID
+	semanticAuthorityID:     #SafeID
+	packageDigest:           #Digest
+	candidateDigest:         #Digest
+	observationDigest:       #Digest
+	normalizedFactSet:       #NormalizedFactSet
+	comparisonRuleSetDigest: #Digest
+	comparisonResults:       [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
+	outcome:                 #SemanticOutcome
+	diagnostics?:            [#Diagnostic, ...#Diagnostic]
 })
 
-// #JudgementIngress is the only caller-supplied judgement request. It contains
-// no comparison booleans and no semantic outcome.
+// #JudgementIngress is the only caller-supplied judgement request. Mechanical
+// digests are supplied by the framing controller; comparison results and the
+// semantic outcome are absent and are derived only by CUE.
 #JudgementIngress: close({
-	requestID:           #SafeID
-	judgementID:         #SafeID
-	realizationDigest:   #Digest
-	caseID:              #SafeID
-	semanticAuthorityID: #SafeID
-	packageDigest:       #Digest
-	candidateDigest:     #Digest
-	observation:         #ObservationRecord
-	comparisonRuleIDs:   [#SafeID, ...#SafeID]
+	requestID:                  #SafeID
+	judgementID:                #SafeID
+	derivationInputDigest:      #Digest
+	evaluator:                  #EvaluatorIdentity
+	realizationDigest:          #Digest
+	caseID:                     #SafeID
+	semanticAuthorityID:        #SafeID
+	packageDigest:              #Digest
+	candidateDigest:            #Digest
+	observation:                #ObservationRecord
+	normalizedFactSetID:        #SafeID
+	normalizedFactSetDigest:    #Digest
+	normalizationRuleSetDigest: #Digest
+	comparisonRuleSetDigest:    #Digest
+	normalizationRuleIDs:       [#SafeID, ...#SafeID]
+	comparisonRuleIDs:          [#SafeID, ...#SafeID]
 })
 
-// #JudgementDerivation is the semantic constructor. Callers provide only
-// #JudgementIngress; CUE derives comparison results and the final outcome.
+// #JudgementDerivation is the semantic constructor. CUE normalizes raw facts,
+// evaluates comparisons, and derives the final semantic outcome.
 #JudgementDerivation: close({
 	realization: #CueRealization
 	ingress:     #JudgementIngress
 
 	_case: realization.cases[ingress.caseID]
 	ingress: {
+		normalizationRuleIDs: _case.normalizationRuleIDs
+		comparisonRuleIDs:    _case.comparisonRuleIDs
 		observation: {
 			caseID: ingress.caseID
 		}
 	}
 
-	_comparisonResults: {
-		for _, RuleID in ingress.comparisonRuleIDs {
-			"\(RuleID)": #ComparisonResult & {
-				ruleID:            RuleID
-				expectedFactID:    realization.comparisonRules[RuleID].expectedFactID
-				observationFactID: realization.comparisonRules[RuleID].observationFactID
-				if realization.comparisonRules[RuleID].operator == "equals" {
-					matched: realization.expectedFacts[expectedFactID].expectedValue == ingress.observation.facts[observationFactID].observedValue
-				}
-				if realization.comparisonRules[RuleID].operator == "not-equals" {
-					matched: realization.expectedFacts[expectedFactID].expectedValue != ingress.observation.facts[observationFactID].observedValue
+	if ingress.observation.state == "facts-observed" {
+		_normalizedFacts: {
+			for _, RuleID in ingress.normalizationRuleIDs {
+				"\(realization.normalizationRules[RuleID].normalizedFactID)": #NormalizedFact & {
+					factID:                  realization.normalizationRules[RuleID].normalizedFactID
+					normalizationRuleID:     RuleID
+					observationFactID:       realization.normalizationRules[RuleID].observationFactID
+					predicate:               realization.normalizationRules[RuleID].normalizedPredicate
+					value:                   ingress.observation.facts[observationFactID].observedValue
+					sourceObservationDigest: ingress.observation.sourceRecordDigest
 				}
 			}
 		}
+
+		_comparisonResults: {
+			for _, RuleID in ingress.comparisonRuleIDs {
+				"\(RuleID)": #ComparisonResult & {
+					ruleID:           RuleID
+					expectedFactID:   realization.comparisonRules[RuleID].expectedFactID
+					normalizedFactID: realization.comparisonRules[RuleID].normalizedFactID
+					expectedValue:    realization.expectedFacts[expectedFactID].expectedValue
+					observedValue:    _normalizedFacts[normalizedFactID].value
+					if realization.comparisonRules[RuleID].operator == "equals" {
+						matched: expectedValue == observedValue
+					}
+					if realization.comparisonRules[RuleID].operator == "not-equals" {
+						matched: expectedValue != observedValue
+					}
+				}
+			}
+		}
+
+		_allMatched: list.And([for _, Result in _comparisonResults {Result.matched}])
 	}
 
-	_allMatched: list.And([for _, Result in _comparisonResults {Result.matched}])
+	if ingress.observation.state != "facts-observed" {
+		_normalizedFacts:   close({})
+		_comparisonResults: close({})
+	}
+
+	_normalizedFactSet: #NormalizedFactSet & {
+		factSetID:                  ingress.normalizedFactSetID
+		factSetDigest:              ingress.normalizedFactSetDigest
+		normalizationRuleSetDigest: ingress.normalizationRuleSetDigest
+		sourceObservationDigest:    ingress.observation.sourceRecordDigest
+		facts:                      _normalizedFacts
+	}
 
 	judgement: #SemanticJudgement & {
-		judgementID:         ingress.judgementID
-		realizationID:       realization.realizationID
-		caseID:              ingress.caseID
-		semanticAuthorityID: ingress.semanticAuthorityID
-		packageDigest:       ingress.packageDigest
-		candidateDigest:     ingress.candidateDigest
-		observationDigest:   ingress.observation.sourceRecordDigest
-		comparisonResults:   _comparisonResults
+		judgementID:             ingress.judgementID
+		derivationInputDigest:   ingress.derivationInputDigest
+		evaluator:               ingress.evaluator
+		realizationID:           realization.realizationID
+		realizationDigest:       ingress.realizationDigest
+		caseID:                  ingress.caseID
+		semanticAuthorityID:     ingress.semanticAuthorityID
+		packageDigest:           ingress.packageDigest
+		candidateDigest:         ingress.candidateDigest
+		observationDigest:       ingress.observation.sourceRecordDigest
+		normalizedFactSet:       _normalizedFactSet
+		comparisonRuleSetDigest: ingress.comparisonRuleSetDigest
+		comparisonResults:       _comparisonResults
 
 		if ingress.observation.state != "facts-observed" {
 			outcome:     "indeterminate"
@@ -306,6 +393,9 @@ import "list"
 	}
 	expectedFacts: [FactID=#SafeID]: #ExpectedFact & {
 		factID: FactID
+	}
+	normalizationRules: [RuleID=#SafeID]: #NormalizationRule & {
+		ruleID: RuleID
 	}
 	comparisonRules: [RuleID=#SafeID]: #ComparisonRule & {
 		ruleID: RuleID
