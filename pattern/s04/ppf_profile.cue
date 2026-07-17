@@ -9,16 +9,16 @@ package s04
 #PPFSourceSpecVersion: "2025-09"
 #PPFProfileID:         "s04.kattis-ppf-minimal.v0"
 #PackageShortName:     #NonEmptyString & =~"^[a-z0-9]+$"
-#UUID: #NonEmptyString & =~"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+#UUID:                 #NonEmptyString & =~"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
 #PPFLicense:
 	"unknown" |
-	"public domain" |
-	"cc0" |
-	"cc by" |
-	"cc by-sa" |
-	"educational" |
-	"permission"
+		"public domain" |
+		"cc0" |
+		"cc by" |
+		"cc by-sa" |
+		"educational" |
+		"permission"
 
 #PPFCredits: close({
 	authors: [#NonEmptyString, ...#NonEmptyString]
@@ -29,7 +29,7 @@ package s04
 	"time_limit":        number & >0
 	memory:              int & >0
 	output:              int & >0
-	"validation_time":  number & >0
+	"validation_time":   number & >0
 	"validation_memory": int & >0
 	"validation_output": int & >0
 })
@@ -75,7 +75,7 @@ package s04
 
 #CandidateExpectation:
 	"accepted" |
-	"rejected"
+		"rejected"
 
 #PPFCandidate: close({
 	candidateID:  #SafeID
@@ -97,11 +97,11 @@ package s04
 	evidenceID: #SafeID
 	kind:
 		"package-identity" |
-		"candidate-identity" |
-		"raw-observation" |
-		"normalized-fact" |
-		"comparison-result" |
-		"semantic-judgement"
+			"candidate-identity" |
+			"raw-observation" |
+			"normalized-fact" |
+			"comparison-result" |
+			"semantic-judgement"
 	path:    #RelativePath
 	durable: true
 })
@@ -112,9 +112,9 @@ package s04
 	sourceSpecVersion: #PPFSourceSpecVersion
 	conformance:       "profile-only"
 
-	packageID:       #SafeID
+	packageID:        #SafeID
 	packageDirectory: #PackageShortName
-	packageDigest:   #Digest
+	packageDigest:    #Digest
 	metadata: #PPFProblemMetadata & {
 		"problem_format_version": sourceSpecVersion
 	}
