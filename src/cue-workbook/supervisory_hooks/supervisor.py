@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -36,8 +37,11 @@ from .policy import (
     repository_state_digest,
 )
 
+_SHELL_PUNCTUATION = frozenset("();&|<>")
+
 
 def _approve_response() -> dict[str, object]:
+    """Internal provisional marker; the repository entrypoint removes it on the wire."""
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -69,6 +73,30 @@ def _post_guidance_response(status: str, guidance: Guidance | None = None) -> di
             "additionalContext": json.dumps(payload, sort_keys=True, separators=(",", ":")),
         }
     }
+
+
+def _bash_command(event: PreToolUseInput | PostToolUseInput) -> str | None:
+    if event.tool_name.casefold() != "bash" or not isinstance(event.tool_input, dict):
+        return None
+    value = event.tool_input.get("command", event.tool_input.get("cmd"))
+    return value if isinstance(value, str) else None
+
+
+def _ambiguous_shell_form(event: PreToolUseInput | PostToolUseInput) -> bool:
+    """Reject compound, redirected, piped, or substituted Bash from recognition."""
+    command = _bash_command(event)
+    if command is None:
+        return False
+    if "\n" in command or any(marker in command for marker in ("`", "$(", "<(", ">(")):
+        return True
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="();&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = tuple(lexer)
+    except ValueError:
+        return True
+    return any(token and set(token) <= _SHELL_PUNCTUATION for token in tokens)
 
 
 class Supervisor:
@@ -134,6 +162,10 @@ class Supervisor:
             )
 
     def handle_pre(self, event: PreToolUseInput) -> dict[str, object]:
+        if _ambiguous_shell_form(event):
+            self._record_unclassified_pre(event)
+            return _approve_response()
+
         classification = classify_tool(
             event.tool_name,
             event.tool_input,
@@ -161,7 +193,16 @@ class Supervisor:
             )
             operation = operation.model_copy(update={"candidate_digest": relevant_state_digest})
             projection = project_evidence(transaction.history)
-            decision = decide(state.scope, operation, projection, state.budgets)
+            decision_projection = projection.model_copy(
+                update={
+                    "observations": tuple(
+                        observation
+                        for observation in projection.observations
+                        if observation.outcome == "reported-error"
+                    )
+                }
+            )
+            decision = decide(state.scope, operation, decision_projection, state.budgets)
             if decision.action == "approve":
                 pending = dict(state.pending)
                 pending[event.tool_use_id] = PendingOperation(
@@ -197,6 +238,10 @@ class Supervisor:
         return _approve_response() if decision.action == "approve" else _deny_response(decision)
 
     def handle_post(self, event: PostToolUseInput) -> dict[str, object]:
+        if _ambiguous_shell_form(event):
+            self._record_unclassified_post(event)
+            return {}
+
         classification = classify_tool(
             event.tool_name,
             event.tool_input,
@@ -220,42 +265,38 @@ class Supervisor:
             transaction.state = state
 
             if expected is None:
-                operation = classification.operation
-                assert operation is not None
-                relevant_paths = tuple(
-                    dict.fromkeys((*state.scope.owned_paths, *operation.target_paths))
-                )
-                current_state_digest = repository_state_digest(
-                    self.repository_root,
-                    relevant_paths,
-                )
-                operation = operation.model_copy(update={"candidate_digest": current_state_digest})
-                completed = CompletedOperation(
-                    scope=state.scope,
-                    operation=operation,
-                    relevant_state_digest=current_state_digest,
-                    tool_name=event.tool_name,
-                )
-                unmatched = True
-            else:
-                relevant_paths = tuple(
-                    dict.fromkeys(
-                        (*expected.scope.owned_paths, *expected.operation.target_paths)
+                sequence = transaction.next_sequence()
+                transaction.append(
+                    UnclassifiedObservationRecord(
+                        sequence=sequence,
+                        recorded_at_nanoseconds=time.time_ns(),
+                        operation_id=event.tool_use_id,
+                        stage="post",
+                        session_id=event.session_id,
+                        turn_id=event.turn_id,
+                        tool_name=event.tool_name,
+                        request_digest=request_digest,
+                        result_digest=digest_json(event.tool_response),
+                        outcome=observed.outcome,
                     )
                 )
-                current_state_digest = repository_state_digest(
-                    self.repository_root,
-                    relevant_paths,
-                )
-                completed = CompletedOperation(
-                    scope=expected.scope,
-                    operation=expected.operation.model_copy(
-                        update={"candidate_digest": current_state_digest}
-                    ),
-                    relevant_state_digest=expected.relevant_state_digest,
-                    tool_name=expected.tool_name,
-                )
-                unmatched = False
+                return _post_guidance_response("unmatched-post-observed")
+
+            relevant_paths = tuple(
+                dict.fromkeys((*expected.scope.owned_paths, *expected.operation.target_paths))
+            )
+            current_state_digest = repository_state_digest(
+                self.repository_root,
+                relevant_paths,
+            )
+            completed = CompletedOperation(
+                scope=expected.scope,
+                operation=expected.operation.model_copy(
+                    update={"candidate_digest": current_state_digest}
+                ),
+                relevant_state_digest=expected.relevant_state_digest,
+                tool_name=expected.tool_name,
+            )
 
             projection = project_evidence(transaction.history)
             try:
@@ -278,7 +319,6 @@ class Supervisor:
 
             sequence = transaction.next_sequence()
             assert state.run_id is not None
-            evidence_status = "unmatched-post-observed" if unmatched else reduced.evidence_status
             transaction.append(
                 PostObservationRecord(
                     sequence=sequence,
@@ -300,13 +340,13 @@ class Supervisor:
                         reduced.observation.required_observation_channel
                     ),
                     outcome=reduced.observation.outcome,
-                    evidence_status=evidence_status,
+                    evidence_status=reduced.evidence_status,
                     progress=reduced.progress,
                     guidance=reduced.guidance,
                 )
             )
-        if reduced.guidance is not None or unmatched:
-            return _post_guidance_response(evidence_status, reduced.guidance)
+        if reduced.guidance is not None:
+            return _post_guidance_response(reduced.evidence_status, reduced.guidance)
         return {}
 
     def set_scope(self, scope: Scope, *, reason: str) -> SupervisorState:
@@ -331,8 +371,33 @@ class Supervisor:
             )
             return transaction.state
 
+    def ensure_scope(self, scope: Scope, *, reason: str) -> SupervisorState:
+        """Reconcile durable state to an out-of-band host-configured scope."""
+        if not reason.strip():
+            raise ValueError("scope transition reason must be nonempty")
+        with self.ledger.transaction() as transaction:
+            state = transaction.state
+            if state.scope == scope:
+                return state
+            previous = state.scope
+            transaction.state = state.model_copy(update={"scope": scope})
+            sequence = transaction.next_sequence()
+            transaction.append(
+                ControlTransitionRecord(
+                    sequence=sequence,
+                    recorded_at_nanoseconds=time.time_ns(),
+                    operation_id=f"host-scope-{sequence}",
+                    run_id=state.run_id,
+                    attempt_id=state.attempt_id,
+                    previous_scope=previous,
+                    scope=scope,
+                    reason=reason,
+                )
+            )
+            return transaction.state
+
     def set_phase(self, activity: Activity, *, reason: str) -> SupervisorState:
-        """Compatibility transition; new callers should provide an explicit scope."""
+        """Compatibility transition; host-only callers may supply a default scope."""
         return self.set_scope(default_scope(activity), reason=reason)
 
     def status(self) -> dict[str, object]:

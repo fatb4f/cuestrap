@@ -1,4 +1,4 @@
-"""Command adapter for Codex hooks and explicit operator scope transitions."""
+"""Command adapter for Codex hooks and read-only supervisor inspection."""
 from __future__ import annotations
 
 import argparse
@@ -12,15 +12,8 @@ from typing import get_args
 from pydantic import ValidationError
 
 from .ledger import DurableLedger
-from .models import (
-    DEFAULT_TARGETS_BY_ACTIVITY,
-    Activity,
-    PostToolUseInput,
-    PreToolUseInput,
-    Scope,
-    Surface,
-    TargetID,
-)
+from .models import Activity, PostToolUseInput, PreToolUseInput, Scope, default_scope
+from .routing import plan_pretool_route, render_pretool_response, restore_posttool_event
 from .supervisor import Supervisor
 
 
@@ -43,11 +36,24 @@ def _git_private_directory(repository_root: Path) -> Path:
 
 
 def _supervisor(repository_root: Path) -> Supervisor:
-    initial_activity = os.environ.get("CUESTRAP_BOOTSTRAP_PHASE", "inspect")
-    if initial_activity not in get_args(Activity):
-        raise ValueError(f"invalid initial activity: {initial_activity!r}")
-    ledger = DurableLedger(_git_private_directory(repository_root), initial_activity=initial_activity)
-    return Supervisor(repository_root, ledger)
+    configured = os.environ.get("CUESTRAP_BOOTSTRAP_SCOPE")
+    if configured is None:
+        initial_activity = os.environ.get("CUESTRAP_BOOTSTRAP_PHASE", "inspect")
+        if initial_activity not in get_args(Activity):
+            raise ValueError(f"invalid initial activity: {initial_activity!r}")
+        scope = default_scope(initial_activity)
+        reason = "host-configured default bootstrap scope"
+    else:
+        scope = Scope.model_validate_json(configured)
+        initial_activity = scope.activity
+        reason = "host-configured explicit bootstrap scope"
+    ledger = DurableLedger(
+        _git_private_directory(repository_root),
+        initial_activity=initial_activity,
+    )
+    supervisor = Supervisor(repository_root, ledger)
+    supervisor.ensure_scope(scope, reason=reason)
+    return supervisor
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -55,61 +61,27 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repository-root", type=Path, required=True)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("hook")
-
-    scope = subparsers.add_parser("set-scope")
-    scope.add_argument("activity", choices=get_args(Activity))
-    scope.add_argument("--surface", choices=get_args(Surface), required=True)
-    scope.add_argument("--owned-path", action="append", default=[])
-    scope.add_argument("--allowed-target", choices=get_args(TargetID), action="append")
-    scope.add_argument("--reason", required=True)
-
-    phase = subparsers.add_parser("set-phase")
-    phase.add_argument("phase", choices=get_args(Activity))
-    phase.add_argument("--reason", required=True)
     subparsers.add_parser("status")
     return parser
 
 
 def _protocol_failure(event_name: object, reason: str) -> dict[str, object]:
-    if event_name == "PreToolUse":
+    if event_name in {"PreToolUse", "PostToolUse"}:
         return {
             "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "approve",
+                "hookEventName": event_name,
                 "additionalContext": reason,
             }
         }
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": reason,
-        }
-    }
+    return {"systemMessage": reason}
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, wire_safe: bool = False) -> int:
     args = _parser().parse_args(argv)
     repository_root = args.repository_root.resolve(strict=True)
-    supervisor = _supervisor(repository_root)
     if args.command == "status":
+        supervisor = _supervisor(repository_root)
         print(json.dumps(supervisor.status(), sort_keys=True, indent=2))
-        return 0
-    if args.command == "set-scope":
-        targets = tuple(args.allowed_target or DEFAULT_TARGETS_BY_ACTIVITY[args.activity])
-        state = supervisor.set_scope(
-            Scope(
-                activity=args.activity,
-                surface=args.surface,
-                owned_paths=tuple(args.owned_path),
-                allowed_targets=targets,
-            ),
-            reason=args.reason,
-        )
-        print(state.model_dump_json(by_alias=True, indent=2))
-        return 0
-    if args.command == "set-phase":
-        state = supervisor.set_phase(args.phase, reason=args.reason)
-        print(state.model_dump_json(by_alias=True, indent=2))
         return 0
 
     raw: object = None
@@ -118,10 +90,26 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(raw, dict):
             raise ValueError("hook input must be a JSON object")
         event_name = raw.get("hook_event_name")
+        supervisor = _supervisor(repository_root)
         if event_name == "PreToolUse":
-            response = supervisor.handle_pre(PreToolUseInput.model_validate(raw))
+            event = PreToolUseInput.model_validate(raw)
+            if wire_safe:
+                route = plan_pretool_route(event, repository_root)
+                if route.behavior == "redirect":
+                    response = render_pretool_response(route, {})
+                else:
+                    semantic_event = route.semantic_event or event
+                    response = render_pretool_response(
+                        route,
+                        supervisor.handle_pre(semantic_event),
+                    )
+            else:
+                response = supervisor.handle_pre(event)
         elif event_name == "PostToolUse":
-            response = supervisor.handle_post(PostToolUseInput.model_validate(raw))
+            event = PostToolUseInput.model_validate(raw)
+            if wire_safe:
+                event = restore_posttool_event(event, repository_root)
+            response = supervisor.handle_post(event)
         else:
             raise ValueError(f"unsupported hook event: {event_name!r}")
     except (OSError, ValueError, ValidationError) as error:

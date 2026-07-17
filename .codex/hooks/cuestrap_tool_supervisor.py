@@ -13,4 +13,4 @@ from supervisory_hooks.cli import main  # noqa: E402
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(wire_safe=True))
