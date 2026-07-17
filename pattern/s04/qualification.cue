@@ -23,13 +23,3 @@ validation: {
 		}
 	}
 }
-
-// Negative shape witness: validate cannot acquire a right operand.
-_invalidBinaryValidate: #PrimitiveOperation & {
-	operationID: "invalid-validate"
-	kind:        "validate"
-	left:        {subjectID: "left"}
-	right:       {subjectID: "right"}
-	direction:   "subject-only"
-	produces:    ["raw"]
-}
