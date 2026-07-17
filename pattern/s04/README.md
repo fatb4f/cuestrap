@@ -33,8 +33,10 @@ outcome.
 - `slice_output.cue` publishes the exact contract-bundle handoff.
 - `validation_witness.cue` and `qualification.cue` prove positive and
   indeterminate semantic derivations.
-- `negative_validate.cue.txt`, `invalid_reference.cue.txt`, and
-  `invalid_projection.cue.txt` are expected-bottom qualification inputs.
+- `negative_validate.cue.txt`, `invalid_reference.cue.txt`,
+  `invalid_projection.cue.txt`, `invalid_claim_value.cue.txt`,
+  `invalid_materialization.cue.txt`, and
+  `invalid_outcome_constraint.cue.txt` are expected-bottom qualification inputs.
 - `VALIDATION.md` records the pinned CUE qualification protocol.
 
 No LT-01 package instance or candidate fixture is included in this slice.
@@ -95,3 +97,6 @@ cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out t
 The negative inputs must each bottom when copied to a `.cue` filename and vetted
 with the same package. The exact build and evidence protocol is recorded in
 `VALIDATION.md`.
+
+The corrected source manifest remains `indeterminate` until those checks are
+rerun against the exact source-set digest recorded by `sliceOutput`.

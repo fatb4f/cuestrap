@@ -38,7 +38,10 @@ bottom under `cue vet -c=false pattern/s04/*.cue`:
 
 - a validate operation carrying a right operand;
 - a realization containing foreign semantic references;
-- a projection containing a foreign realization case.
+- a projection containing a foreign realization case;
+- an expected fact contradicting its semantic claim value;
+- an operation referencing a missing subject materialization;
+- a derived judgement violating the case's required outcome.
 
 The committed witness is generic qualification evidence, not an LT-01 package
 fixture and not a second semantic authority.

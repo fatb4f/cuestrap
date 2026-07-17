@@ -47,12 +47,24 @@ package s04
 // identity excludes this manifest file to avoid self-reference and is computed
 // over the ordered path/blob records below.
 sliceOutput: #S04ContractBundleManifest & {
-	sourceSetDigest: "sha256:95b7bc6342dff95727fbbb1ee65c42a9c743e2312b1bccb846f9137ea03d21f3"
+	sourceSetDigest: "sha256:5a1f487024562ceeb7968bc1168250080e7d32105df1430908829996f4df2c57"
 
 	sourceFiles: {
 		"integrity": {
 			path:       "pattern/s04/integrity.cue"
-			gitBlobSHA: "c3059dc075c76d3245762371dd3842985bba1098"
+			gitBlobSHA: "ad02d10166951206c60ca843fa53d01f2df15285"
+		}
+		"invalid-claim-value": {
+			path:       "pattern/s04/invalid_claim_value.cue.txt"
+			gitBlobSHA: "a793626eb555af517909425350d7295716476b35"
+		}
+		"invalid-materialization": {
+			path:       "pattern/s04/invalid_materialization.cue.txt"
+			gitBlobSHA: "cbd7eadbef932e14f67b0d05ae0a7d10a5656f36"
+		}
+		"invalid-outcome-constraint": {
+			path:       "pattern/s04/invalid_outcome_constraint.cue.txt"
+			gitBlobSHA: "e998c46d06384fc58d60cd7de9e5df77a09ecd93"
 		}
 		"invalid-projection": {
 			path:       "pattern/s04/invalid_projection.cue.txt"
@@ -80,7 +92,7 @@ sliceOutput: #S04ContractBundleManifest & {
 		}
 		"semantic-ir": {
 			path:       "pattern/s04/semantic_ir.cue"
-			gitBlobSHA: "6a0fe24a4d51a07aedd7055f9222eb738b9afb01"
+			gitBlobSHA: "0a70f22ad74a7da65bda5fd8be05c73cbbf3579a"
 		}
 		"validation-witness": {
 			path:       "pattern/s04/validation_witness.cue"
@@ -98,7 +110,7 @@ sliceOutput: #S04ContractBundleManifest & {
 	]
 
 	qualification: {
-		disposition:       "qualified"
+		disposition:       "indeterminate"
 		evaluatorRevision: "806821e40fae070318600a264d311517e596353b"
 		languageVersion:   "v0.18.0"
 		goVersion:         "1.25.5"
@@ -107,10 +119,11 @@ sliceOutput: #S04ContractBundleManifest & {
 			"cue vet -c=false pattern/s04/*.cue",
 			"cue eval pattern/s04/*.cue -e validation.positive.judgement.outcome --out text",
 			"cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text",
-			"expected-bottom validation for binary validate, foreign semantic references, and foreign projection cases",
+			"expected-bottom validation for binary validate, foreign semantic references, foreign projection cases, contradictory claim values, missing materializations, and prohibited outcomes",
 		]
-		evidenceDigest: "sha256:86a7b3fa2dac8608032356353fcd5667910a223c58b62a1c270fcb9eb9b59fce"
-		workflowRunID:  29611456830
-		artifactID:     8418883568
+		diagnostics: [{
+			code:    "logical-fix-qualification-pending"
+			message: "The corrected source set requires fresh exact CUE v0.18 qualification."
+		}]
 	}
 }

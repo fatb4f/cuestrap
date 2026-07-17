@@ -14,6 +14,7 @@ import "list"
 	_authorityIDs:         [for ID, _ in R.authorities {ID}]
 	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
 	_subjectIDs:           [for ID, _ in R.subjects {ID}]
+	_materializationIDs:   [for ID, _ in R.materializations {ID}]
 	_claimIDs:             [for ID, _ in R.claims {ID}]
 	_expectedFactIDs:      [for ID, _ in R.expectedFacts {ID}]
 	_normalizationRuleIDs: [for ID, _ in R.normalizationRules {ID}]
@@ -27,8 +28,20 @@ import "list"
 			"\(ClaimID)": {
 				authorityExists: true & list.Contains(_semanticAuthorityIDs, Claim.authorityID)
 				subjectsExist: [for _, Operand in Claim.operands {
-					true & list.Contains(_subjectIDs, Operand.subjectID)
+					subjectExists: true & list.Contains(_subjectIDs, Operand.subjectID)
+					if Operand.materializationID != _|_ {
+						materializationExists:        true & list.Contains(_materializationIDs, Operand.materializationID)
+						materializationSubjectMatches: Operand.subjectID & R.materializations[Operand.materializationID].subjectID
+					}
 				}]
+			}
+		}
+	}
+
+	_materializations: {
+		for MaterializationID, Materialization in R.materializations {
+			"\(MaterializationID)": {
+				subjectExists: true & list.Contains(_subjectIDs, Materialization.subjectID)
 			}
 		}
 	}
@@ -38,7 +51,7 @@ import "list"
 			"\(FactID)": {
 				claimExists:        true & list.Contains(_claimIDs, Fact.claimID)
 				authorityExists:    true & list.Contains(_semanticAuthorityIDs, Fact.authorityID)
-				matchingClaimCount: 1 & len([for ClaimID, Claim in R.claims if ClaimID == Fact.claimID && Claim.authorityID == Fact.authorityID && Claim.predicate == Fact.predicate {ClaimID}])
+				matchingClaimCount: 1 & len([for ClaimID, Claim in R.claims if ClaimID == Fact.claimID && Claim.authorityID == Fact.authorityID && Claim.predicate == Fact.predicate && Claim.value == Fact.expectedValue {ClaimID}])
 			}
 		}
 	}
@@ -59,8 +72,16 @@ import "list"
 			"\(PlanID)": {
 				operations: [for _, Operation in Plan.operations {
 					leftSubjectExists: true & list.Contains(_subjectIDs, Operation.left.subjectID)
+					if Operation.left.materializationID != _|_ {
+						leftMaterializationExists:        true & list.Contains(_materializationIDs, Operation.left.materializationID)
+						leftMaterializationSubjectMatches: Operation.left.subjectID & R.materializations[Operation.left.materializationID].subjectID
+					}
 					if Operation.kind != "validate" {
 						rightSubjectExists: true & list.Contains(_subjectIDs, Operation.right.subjectID)
+						if Operation.right.materializationID != _|_ {
+							rightMaterializationExists:        true & list.Contains(_materializationIDs, Operation.right.materializationID)
+							rightMaterializationSubjectMatches: Operation.right.subjectID & R.materializations[Operation.right.materializationID].subjectID
+						}
 					}
 				}]
 			}

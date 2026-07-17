@@ -1,5 +1,7 @@
 package s04
 
+import "list"
+
 // S04 v0 semantic realization intermediate representation.
 //
 // This package defines semantic contracts only. Runners and transports emit raw
@@ -194,6 +196,10 @@ package s04
 #OutcomeConstraint: close({
 	permitted: [#SemanticOutcome, ...#SemanticOutcome]
 	required?: #SemanticOutcome
+
+	if required != _|_ {
+		_requiredPermitted: true & list.Contains(permitted, required)
+	}
 })
 
 #RealizationCase: close({
@@ -396,6 +402,11 @@ package s04
 			outcome: "rejected"
 		}
 	}
+
+	_outcomePermitted: true & list.Contains(_case.outcomeConstraint.permitted, judgement.outcome)
+	if _case.outcomeConstraint.required != _|_ {
+		_requiredOutcomeMatch: judgement.outcome & _case.outcomeConstraint.required
+	}
 }
 
 #CueRealization: close({
@@ -409,6 +420,10 @@ package s04
 	}
 	subjects: [SubjectID=#SafeID]: #SubjectSpec & {
 		subjectID: SubjectID
+	}
+	materializations: [MaterializationID=#SafeID]: #MaterializedSubjectIdentity & {
+		materializationID: MaterializationID
+		realizationID:     realizationID
 	}
 	claims: [ClaimID=#SafeID]: #SemanticClaim & {
 		claimID: ClaimID
