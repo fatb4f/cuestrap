@@ -52,6 +52,51 @@ package bootstrapclient
 	resolvedAtSequence:    uint
 })
 
+// Exact session coordinates used by the direct workbook MCP adapter.
+#WorkbookSessionBinding: close({
+	requestIdentity:    #Digest
+	serverEndpoint:     string & !=""
+	workbookPath:       #RepositoryPath
+	workbookDigest:     #Digest
+	sessionID:          #SessionID
+	sessionDigest:      #Digest
+	resolvedAtSequence: uint
+})
+
+#ControllerBindingRelease: close({
+	schema:                "cuestrap.workbook-binding-release/v1"
+	state:                 "released"
+	requestIdentity:       #Digest
+	bindingDigest:         #Digest
+	serverEndpoint:        string & !=""
+	sessionID:             #SessionID
+	releasedAtNanoseconds: uint
+})
+
+#ControllerRequest: close({
+	schema:           "cuestrap.operation-controller-request/v0"
+	operationID:      #OperationID
+	sessionID:        #SessionID
+	turnID:           string & !=""
+	targetID:         string & !=""
+	requestDigest:    #Digest
+	proposedToolName: string & !=""
+	workingDirectory: string
+	timeoutSeconds:   uint & >0 & <=600
+	argv?:            [string & !="", ...string & !=""]
+	toolInput?:       _
+	requestIdentity:  #Digest
+})
+
+#BindOperationInput: close({
+	request: #ControllerRequest
+})
+
+#BoundOperationInput: close({
+	request: #ControllerRequest
+	binding: #WorkbookSessionBinding
+})
+
 #ExecutionLimits: close({
 	timeoutMilliseconds: uint & >0 & <=300000
 	maximumOutputBytes:  uint & >0 & <=1048576
@@ -106,8 +151,8 @@ package bootstrapclient
 	operationID: #OperationID
 	questionID:  #QuestionID
 	subject: close({
-		workbookPath: #RepositoryPath
-		cellIDs:      [...#CellID]
+		workbookPath:  #RepositoryPath
+		cellIDs:       [...#CellID]
 		variableNames: [...#VariableName]
 	})
 	probe: close({
@@ -163,7 +208,7 @@ package bootstrapclient
 })
 
 #WorkbookStateIdentity: close({
-	revision:    #Digest
+	revision: #Digest
 	cellDigests: [#CellID]: #Digest
 	graphDigest: #Digest
 })
@@ -172,13 +217,13 @@ package bootstrapclient
 
 #RawCodeModeObservation: close({
 	schemaVersion: "raw-code-mode-observation/v1"
-	runID:          #RunID
-	attemptID:      #AttemptID
-	operationID:    #OperationID
-	session:        #SessionBinding
+	runID:         #RunID
+	attemptID:     #AttemptID
+	operationID:   #OperationID
+	session:       #SessionBinding
 	request: close({
-		operationKind:     "resolve-session" | "capture-state" | "run-focused-probe" | "apply-cell-transaction"
-		requestDigest:     #Digest
+		operationKind:       "resolve-session" | "capture-state" | "run-focused-probe" | "apply-cell-transaction"
+		requestDigest:       #Digest
 		generatedCodeDigest: #Digest
 	})
 	transport: close({state: "returned" | "transport-error" | "timed-out"})
@@ -203,7 +248,7 @@ package bootstrapclient
 		changedCellIDs:           [...#CellID]
 		unexpectedChangedCellIDs: [...#CellID]
 	})
-	structuralResult?: "applied-as-declared" | "not-applied" | "partially-applied" | "unexpected-cell-change" | "cell-identity-changed" | "post-state-unavailable"
+	structuralResult?:  "applied-as-declared" | "not-applied" | "partially-applied" | "unexpected-cell-change" | "cell-identity-changed" | "post-state-unavailable"
 	artifacts:          [...close({kind: string & !="", digest: #Digest})]
 	recordedAtSequence: uint
 })

@@ -8,13 +8,17 @@ The architecture uses three distinct Marimo workbooks with different targets, au
 |---|---|---|
 | Main CUEstrap workbook | Long-lived | System A target and interactive experiment surface |
 | Rollout/JSONL controller workbook | Session- or rollout-scoped disposable | System B observation, normalization, correlation, and prospective control frame |
-| Operation-controller workbook | One bounded general action | One-use Bash, `tool_exec`, or typed-tool execution and durable receipts |
+| Operation-controller workbook | One bounded general action binding | One-use uncovered effect and durable receipts through the workbook MCP adapter |
 
 ## Main CUEstrap workbook
 
-The main workbook remains the target-workbook surface. Existing Marimo code-mode, constrained client, and workbook CLI operations continue to act directly on it.
+The main workbook remains the target-workbook surface. The agent uses the typed
+`workbook` MCP adapter, which selects an exact session and delegates to the
+shared Marimo code-mode endpoint. CLIs remain operator and test frontends.
 
-Direct routing is structural: a command must invoke the exact workbook adapter and admitted operation. Merely mentioning `code_mode_client.py` or `workbook_cli.py` as a file operand does not make an action workbook-centric.
+Direct routing is structural: a call must use an exported workbook MCP tool and
+satisfy its closed structured schema. Merely mentioning an adapter or CLI
+filename as a file operand does not make an action workbook-centric.
 
 It owns the interactive CUEstrap experiment and implementation state. It does not supervise, authorize, or assess its own mutations.
 
@@ -37,7 +41,9 @@ This workbook is deferred beyond PR #11.
 
 ## Operation-controller workbook
 
-PR #11 implements the operation-scoped executor for recognized general Bash and `tool_exec` actions, plus exact typed adapters such as `apply_patch`.
+The operation-scoped executor handles recognized effects that do not already
+have an adequate typed adapter. Git, CUE LSP, gopls, and workbook operations stay
+on their direct MCP transports.
 
 ```text
 closed identity-bound request
@@ -50,25 +56,29 @@ closed identity-bound request
     → terminal receipt
 ```
 
-Both Bash and `tool_exec` are redirected to a fresh Marimo code-mode runtime by
-denying the original action with an exact controller-workbook instantiation
-command. The bound runtime returns exact `inspect`, `execute`, `diagnose`, and
-`close` commands. The agent voluntarily uses those constrained operations; the
-hook does not rewrite the original action or execute the effect itself. Bash is
-admitted only when shell parsing and direct argv execution have identical
-meaning. Globs, brace expansion, substitutions, pipelines, redirections,
-compound syntax, and other expansion-dependent forms remain outside the
-controller vocabulary instead of being reinterpreted as literal argv.
+Codex does not expose its default shell tool because the project configuration
+sets `[features].shell_tool = false`. Exact argv and other recognized uncovered
+effects use a closed request object for `workbook.bind_operation`. The agent continues through typed
+`inspect_operation`, `execute_operation`, `collect_diagnosis`, and
+`release_binding` calls using the returned immutable binding. The hook does not
+rewrite an original action or execute the effect itself. Shell parsing is not a
+fallback transport.
 
 Every request field—including session, turn, operation, working directory, timeout, target, semantic request digest, argv, and typed input—is covered by `requestIdentity` and revalidated before execution.
 
-Each action receives a fresh loopback-only Marimo code-mode runtime with an
-immutable exact-session binding. Canonical argv executes with `shell=False` from
-the workbook's constrained `execute` operation; typed tool adapters handle
-operations that are not argv-native. `inspect` and `diagnose` expose raw workbook
-state and the full receipt without repeating the effect. Durable request,
-binding, exclusive claim, and terminal receipt records make reactive reruns inert
-and make the disposable workbook reconstructable.
+The configured workbook MCP server uses the existing loopback-only Marimo
+code-mode endpoint as a multi-session substrate. A binding records endpoint,
+workbook path and digest, session ID and digest, request identity, and resolution
+sequence. Canonical argv executes with `shell=False` from the workbook's typed
+`execute_operation`; inspection and diagnosis expose raw state and receipts
+without repeating the effect. Durable request, binding, exclusive claim, and
+terminal receipt records make reactive reruns inert.
+Release writes a durable revocation record; subsequent bound operations fail
+with `binding-released` while the shared Marimo server remains live.
+
+`operation_controller_cli.py` is a thin optional frontend over the same service
+library for operator debugging, CI, and MCP-server qualification. It is not the
+agent-facing adapter.
 
 The operation controller does not own tactical semantics, continuity, parent authorization, System A assessment, or joint outcome composition.
 
@@ -87,7 +97,9 @@ rollout/JSONL controller workbook
                     ↓
         ┌───────────┴───────────┐
         │                       │
-target-workbook action   general shell/tool action
+target-workbook action   uncovered shell/tool action
+        │                       │
+workbook MCP adapter     workbook MCP adapter
         │                       │
 main CUEstrap workbook   operation-controller workbook
         │                       │

@@ -1,10 +1,9 @@
-"""Hook routing between target-workbook actions and a disposable controller workbook."""
+"""Route typed adapters directly and uncovered effects through a controller workbook."""
 from __future__ import annotations
 
 import base64
 import binascii
 import json
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -20,11 +19,20 @@ from .execution_transport import (
 from .models import PostToolUseInput, PreToolUseInput
 from .policy import classify_tool
 
-ActionCategory = Literal["workbook-centric", "general", "unclassified"]
+ActionCategory = Literal["workbook-centric", "typed-adapter", "general", "unclassified"]
 RouteBehavior = Literal["direct", "redirect", "neutral"]
 
-WORKBOOK_MCP_PREFIX = "mcp__marimo_code_mode__"
+WORKBOOK_MCP_PREFIXES = (
+    "mcp__marimo_code_mode__",
+    "mcp__workbook__",
+)
+TYPED_MCP_PREFIXES = (
+    "mcp__git_mcp_server__",
+    "mcp__cue_lsp__",
+    "mcp__gopls__",
+)
 _CONTROLLER_CLI = "src/cue-workbook/operation_controller_cli.py"
+_CODE_MODE_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
 _CONTROLLER_OPERATIONS = frozenset({"serve", "inspect", "execute", "diagnose", "close"})
 _EXECUTION_TOOLS = frozenset({"bash", "tool_exec"})
 
@@ -61,23 +69,6 @@ def _relative_working_directory(repository_root: Path, cwd: str) -> str | None:
     return relative.as_posix() or "."
 
 
-def _controller_tokens(repository_root: Path, request: ControllerRequest) -> tuple[str, ...]:
-    root = repository_root.resolve()
-    return (
-        str(root / ".venv/bin/python"),
-        str(root / _CONTROLLER_CLI),
-        "--repository-root",
-        str(root),
-        "--payload",
-        encode_controller_request(request),
-        "serve",
-    )
-
-
-def _controller_command(repository_root: Path, request: ControllerRequest) -> str:
-    return shlex.join(_controller_tokens(repository_root, request))
-
-
 def _has_controller_prefix(tokens: tuple[str, ...], repository_root: Path) -> bool:
     root = repository_root.resolve()
     expected_prefix = (
@@ -85,6 +76,8 @@ def _has_controller_prefix(tokens: tuple[str, ...], repository_root: Path) -> bo
         str(root / _CONTROLLER_CLI),
         "--repository-root",
         str(root),
+        "--endpoint",
+        _CODE_MODE_ENDPOINT,
         "--payload",
     )
     return (
@@ -99,7 +92,7 @@ def _controller_operation(
 ) -> str | None:
     if not _has_controller_prefix(tokens, repository_root):
         return None
-    operation = tokens[-1] if len(tokens) == 7 else None
+    operation = tokens[-1] if len(tokens) == 9 else None
     return operation if operation in _CONTROLLER_OPERATIONS else None
 
 
@@ -188,7 +181,7 @@ def _is_workbook_action(
     repository_root: Path,
 ) -> bool:
     lowered = event.tool_name.casefold()
-    if lowered.startswith(WORKBOOK_MCP_PREFIX):
+    if lowered.startswith(WORKBOOK_MCP_PREFIXES):
         return True
     return invocation is not None and is_exact_workbook_argv(
         invocation.argv,
@@ -221,7 +214,7 @@ def _build_execution_request(
 
 
 def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePlan:
-    """Select target-workbook direct transport or disposable-controller transport."""
+    """Select a direct typed transport or an uncovered-effect controller."""
     lowered = event.tool_name.casefold()
     invocation: ExecutionInvocation | None = None
 
@@ -273,6 +266,19 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
     if _is_workbook_action(event, invocation, repository_root):
         return RoutePlan(category="workbook-centric", behavior="direct")
 
+    if lowered.startswith(TYPED_MCP_PREFIXES):
+        classification = classify_tool(
+            event.tool_name,
+            event.tool_input,
+            repository_root=repository_root,
+        )
+        if classification.recognized and classification.operation is not None:
+            return RoutePlan(
+                category="typed-adapter",
+                behavior="direct",
+                target_id=classification.operation.target_id,
+            )
+
     if invocation is not None:
         classification = classify_execution_argv(
             invocation.argv,
@@ -313,18 +319,17 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             request_digest=operation.request_digest,
             working_directory=working_directory,
         )
-        controller_argv = _controller_tokens(repository_root, request)
-        command = shlex.join(controller_argv)
         return RoutePlan(
             category="general",
             behavior="redirect",
             target_id=operation.target_id,
             request=request,
-            redirect_command=command,
             reason=(
-                "instantiate the bound disposable operation-controller workbook, then "
-                "use the exact constrained code-mode commands it returns: "
-                f"{command}"
+                "reissue the closed request through workbook.bind_operation, then use "
+                "workbook.inspect_operation, workbook.execute_operation, "
+                "workbook.collect_diagnosis, and workbook.release_binding with the returned "
+                "typed binding; request="
+                f"{request.model_dump_json(by_alias=True, exclude_none=True)}"
             ),
             semantic_event=_semantic_pre_event(event, request, repository_root),
         )
@@ -340,17 +345,15 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             workingDirectory=working_directory,
             toolInput=event.tool_input,
         )
-        command = _controller_command(repository_root, request)
         return RoutePlan(
             category="general",
             behavior="redirect",
             target_id=operation.target_id,
             request=request,
-            redirect_command=command,
             reason=(
-                "Codex cannot change an apply_patch call into an execution tool; instantiate "
-                "the bound controller workbook through Bash or tool_exec, then use its exact "
-                f"constrained code-mode commands: {command}"
+                "reissue the closed request through workbook.bind_operation and continue with "
+                "the typed workbook operation lifecycle; request="
+                f"{request.model_dump_json(by_alias=True, exclude_none=True)}"
             ),
         )
 

@@ -1,6 +1,6 @@
 ---
 name: cuestrap-code-mode
-description: Operate the live CUEstrap controller workbook through Marimo code-mode MCP using the repository's constrained client. Use for exact-session workbook inspection, focused cell execution, durable cell transactions, runtime diagnosis, and raw observation collection during the trusted bootstrap loop.
+description: Operate live CUEstrap workbooks through the typed workbook MCP adapter over Marimo code-mode. Use for exact-session inspection, focused probes, durable cell transactions, operation execution, runtime diagnosis, and raw observation collection during the trusted bootstrap loop.
 ---
 
 # CUEstrap code-mode bootstrap
@@ -22,86 +22,51 @@ uv run --project . --locked --exact -- \
 
 Keep `--no-token` restricted to the loopback-bound bootstrap laboratory. Codex uses the registered `http://127.0.0.1:2718/mcp/server` endpoint.
 
-## Use the constrained client
+## Use the typed workbook MCP adapter
 
-During qualified runs, call only `src/cue-workbook/code_mode_client.py`. Do not call Marimo's `list_sessions` or `execute_code` tools directly and do not edit a live notebook file with filesystem tools.
+During qualified runs, use the configured `workbook` MCP server. It is the
+agent-facing adapter and internally uses Marimo's `list_sessions` and
+`execute_code` primitives against the shared loopback endpoint. Raw Marimo MCP
+remains configured for explicit bootstrap or operator recovery; qualified
+workbook operations use the typed adapter. Do not edit a live notebook with
+filesystem tools.
 
-Every invocation consumes an immutable `bootstrap-run-binding/v1` document. Resolve a session only in `inspect` or `probe`, using a `resolve-session` request whose selection rule is exactly `exactly-one-by-workbook-path`:
+The target-workbook tools are:
 
-The constrained-client admission contract is fixed to the loopback endpoint, this repository root, and these separate operator-artifact roots:
+- `workbook.resolve_session`
+- `workbook.capture_state`
+- `workbook.run_probe`
+- `workbook.apply_transaction`
 
-```text
-.codex/code-mode/run-bindings/
-.codex/code-mode/session-bindings/
-.codex/code-mode/requests/
-```
+Each accepts the closed `bootstrap-run-binding/v1`, operation, and exact session
+binding as structured MCP arguments. Retain the issued `SessionBinding`
+unchanged; never substitute a session ordinal, recent session, or agent-selected
+session ID. A probe remains restricted to `variable-repr` or `cell-source`, and
+a transaction remains replacement-only and preimage-bound.
 
-Files outside their respective roots are not admitted even when they are elsewhere in the repository.
+The operation-controller tools are:
 
-```bash
-.venv/bin/python src/cue-workbook/code_mode_client.py \
-  --endpoint http://127.0.0.1:2718/mcp/server \
-  --repository-root . \
-  --run-binding .codex/code-mode/run-bindings/RUN.json \
-  resolve-session .codex/code-mode/requests/RESOLVE.json
-```
+- `workbook.bind_operation`
+- `workbook.inspect_operation`
+- `workbook.execute_operation`
+- `workbook.collect_diagnosis`
+- `workbook.release_binding`
 
-Retain the issued `bootstrap_client.generated.models.SessionBinding` JSON unchanged. Later invocations receive it explicitly and may not substitute a session ordinal, recent session, or agent-selected session ID.
+When a recognized uncovered effect is denied, pass the closed request object to
+`bind_operation`. Use the returned `ControllerCodeModeBinding` unchanged for the
+remaining calls. Inspect before execution, execute once, collect diagnosis after
+the terminal receipt, and release the binding at the end. A repeated execution
+replays the durable receipt rather than repeating the effect.
+Release is durable: later inspect, execute, or diagnosis calls using that
+binding fail with `binding-released`.
 
-Capture a bounded state projection:
+`src/cue-workbook/code_mode_client.py` and
+`src/cue-workbook/operation_controller_cli.py` are optional operator, CI, and
+adapter-test frontends over the same libraries. They are not the agent-facing
+workbook protocol and supervisory routing must not emit CLI commands.
 
-```bash
-.venv/bin/python src/cue-workbook/code_mode_client.py \
-  --endpoint http://127.0.0.1:2718/mcp/server \
-  --repository-root . \
-  --run-binding .codex/code-mode/run-bindings/RUN.json \
-  --session-binding .codex/code-mode/session-bindings/SESSION.json \
-  capture-state .codex/code-mode/requests/CAPTURE.json
-```
-
-Run one focused probe from the approved `variable-repr` or `cell-source` template. The request must declare exactly one subject and its expected observation shape:
-
-```bash
-.venv/bin/python src/cue-workbook/code_mode_client.py \
-  --endpoint http://127.0.0.1:2718/mcp/server \
-  --repository-root . \
-  --run-binding .codex/code-mode/run-bindings/RUN.json \
-  --session-binding .codex/code-mode/session-bindings/SESSION.json \
-  run-focused-probe .codex/code-mode/requests/PROBE.json
-```
-
-Apply one replacement-based cell transaction only in `implement`. Copy each `expectedPreimageDigest` and the `expectedWorkbookRevision` from a fresh capture; declare every target cell and replacement source digest:
-
-```bash
-.venv/bin/python src/cue-workbook/code_mode_client.py \
-  --endpoint http://127.0.0.1:2718/mcp/server \
-  --repository-root . \
-  --run-binding .codex/code-mode/run-bindings/RUN.json \
-  --session-binding .codex/code-mode/session-bindings/SESSION.json \
-  apply-cell-transaction .codex/code-mode/requests/TRANSACTION.json
-```
-
-The closed operation union is `resolve-session`, `capture-state`, `run-focused-probe`, and `apply-cell-transaction`. There is no raw `execute_code`, arbitrary Python, create/delete/move instruction, or agent-authored MCP request surface.
-
-## Use disposable operation controllers
-
-When the supervisory hook denies a recognized general action with an exact
-`operation_controller_cli.py ... serve` command, re-issue that command unchanged.
-It starts one request-bound loopback-only Marimo code-mode session and returns an
-immutable session binding plus exact `inspect`, `execute`, `diagnose`, and `close`
-commands.
-
-- Use `inspect` before execution to capture the bound request, graph identity,
-  and cell errors.
-- Use `execute` once to claim and perform the effect through the workbook. A
-  repeated call replays the terminal receipt instead of repeating the effect.
-- Use `diagnose` for read-only cell outputs, errors, state identity, and the full
-  structured receipt.
-- Use `close` after evidence collection to dispose of the action-scoped runtime.
-
-Do not alter the payload, endpoint, operation name, or emitted commands, and do
-not call the disposable server's raw MCP tools. This separate closed lifecycle
-does not expand the target-workbook operation union above.
+The adapter exposes no raw `execute_code`, arbitrary Python, create/delete/move
+instruction, or agent-authored MCP request surface.
 
 Use the run phase as a dispatch boundary:
 

@@ -75,7 +75,7 @@ class _ControllerRequestSubject(BaseModel):
 
 
 class ControllerRequest(_ControllerRequestSubject):
-    """Closed request executed once by a fresh controller-workbook runtime."""
+    """Closed request executed once through an exact controller-workbook binding."""
 
     request_identity: Digest = Field(alias="requestIdentity")
 

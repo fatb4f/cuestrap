@@ -5,8 +5,11 @@
 inherit = "all"
 exclude = ["PYTHONHOME"]
 
+[features]
+shell_tool = false
+
 [[hooks.PreToolUse]]
-matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
+matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*|mcp__workbook__.*)$"
 
 [[hooks.PreToolUse.hooks]]
 type = "command"
@@ -15,7 +18,7 @@ timeout = 10
 statusMessage = "Routing through CUEstrap controller workbooks"
 
 [[hooks.PostToolUse]]
-matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*)$"
+matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*|mcp__workbook__.*)$"
 
 [[hooks.PostToolUse.hooks]]
 type = "command"
@@ -70,6 +73,41 @@ enabled = true
 required = false
 tool_timeout_sec = 60
 supports_parallel_tool_calls = false
+
+[mcp_servers.workbook]
+command = "uv"
+args = [
+  "run",
+  "--project", ".",
+  "--locked",
+  "--exact",
+  "--",
+  "python",
+  "src/cue-workbook/workbook_mcp_server.py",
+  "--repository-root", ".",
+  "--endpoint", "http://127.0.0.1:2718/mcp/server",
+]
+cwd = "."
+enabled = true
+required = true
+enabled_tools = [
+  "resolve_session",
+  "capture_state",
+  "run_probe",
+  "apply_transaction",
+  "bind_operation",
+  "inspect_operation",
+  "execute_operation",
+  "collect_diagnosis",
+  "release_binding",
+]
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+supports_parallel_tool_calls = false
+
+[mcp_servers.workbook.env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+PYTHONUNBUFFERED = "1"
 
 [mcp_servers.gopls]
 command = "uv"

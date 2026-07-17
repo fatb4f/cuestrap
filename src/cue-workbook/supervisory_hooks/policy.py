@@ -75,6 +75,31 @@ _GIT_MUTATION_SUBCOMMANDS = {
 _READ_COMMANDS = {"rg", "ls", "stat", "ss", "head", "tail", "wc", "jq", "sed"}
 _WORKSPACE_MUTATIONS = {"rm", "mv", "cp", "mkdir", "touch", "truncate", "install", "tee"}
 _PATCH_PATH = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
+_WORKBOOK_TOOL_TARGETS: dict[str, tuple[TargetID, str]] = {
+    "resolve_session": ("code-mode.resolve-session", "read"),
+    "capture_state": ("code-mode.capture-state", "read"),
+    "run_probe": ("code-mode.run-focused-probe", "probe"),
+    "apply_transaction": ("code-mode.apply-cell-transaction", "mutation"),
+    "bind_operation": ("code-mode.resolve-session", "read"),
+    "inspect_operation": ("code-mode.capture-state", "read"),
+    "collect_diagnosis": ("code-mode.capture-state", "read"),
+    "release_binding": ("code-mode.capture-state", "read"),
+}
+_WORKBOOK_EXECUTION_TARGETS: set[TargetID] = {
+    "shell.read",
+    "git.read",
+    "git.mutation",
+    "workspace.apply-patch",
+    "workspace.mutation",
+    "evaluation.cue",
+    "evaluation.python",
+    "evaluation.go",
+    "evaluation.workbook",
+    "just.list",
+    "just.summary",
+    "just.dump",
+    "just.check",
+}
 
 
 def _command(tool_input: object) -> str:
@@ -217,6 +242,56 @@ def classify_tool(
             "read",
             {"target": "gopls.read", "tool": lowered, "input": tool_input},
             observation_channel="lsp",
+        )
+    if lowered.startswith("mcp__workbook__"):
+        name = lowered.rsplit("__", 1)[-1]
+        if name == "execute_operation":
+            request = tool_input.get("request") if isinstance(tool_input, dict) else None
+            target = request.get("targetID") if isinstance(request, dict) else None
+            if target not in _WORKBOOK_EXECUTION_TARGETS:
+                return _unknown()
+            mutating = target in {
+                "git.mutation",
+                "workspace.apply-patch",
+                "workspace.mutation",
+            }
+            operation_class = (
+                "mutation"
+                if mutating
+                else "evaluation"
+                if str(target).startswith(("evaluation.", "just."))
+                else "read"
+            )
+            target_paths: tuple[str, ...] = ()
+            if request.get("proposedToolName") == "apply_patch":
+                original_input = request.get("toolInput")
+                patch = _patch_text(original_input)
+                target_paths = _normalize_paths(
+                    tuple(_PATCH_PATH.findall(patch)),
+                    repository_root,
+                )
+            return _canonical_operation(
+                target,
+                operation_class,
+                {"target": target, "adapter": name, "input": tool_input},
+                mutating=mutating,
+                target_paths=target_paths,
+                observation_channel=(
+                    "native-evaluation"
+                    if operation_class == "evaluation"
+                    else "static-source"
+                ),
+            )
+        mapped = _WORKBOOK_TOOL_TARGETS.get(name)
+        if mapped is None:
+            return _unknown()
+        target, operation_class = mapped
+        return _canonical_operation(
+            target,
+            operation_class,
+            {"target": target, "adapter": name, "input": tool_input},
+            mutating=operation_class == "mutation",
+            observation_channel="code-mode",
         )
     if lowered.startswith("mcp__"):
         return _unknown()

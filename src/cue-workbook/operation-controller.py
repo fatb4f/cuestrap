@@ -92,10 +92,11 @@ def _(
 def _(controller_request, execution_result, mo):
     mo.vstack(
         [
-            mo.md("# Disposable operation controller"),
+            mo.md("# Operation controller"),
             mo.md(
-                "Use the constrained code-mode client to inspect this bound request, "
-                "execute its effect once, and collect read-only diagnostics. Durable "
+                "Use the typed workbook MCP adapter to inspect this bound request, "
+                "execute its effect once, collect read-only diagnostics, and release "
+                "the binding. Durable "
                 "claim and receipt files make execution reruns inert."
             ),
             mo.md("## Request"),

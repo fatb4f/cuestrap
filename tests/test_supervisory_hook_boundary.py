@@ -5,8 +5,6 @@ import io
 import json
 import os
 import shlex
-import signal
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,13 +16,14 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 import code_mode_client  # noqa: E402
-import operation_controller_cli  # noqa: E402
-from operation_controller_cli import (  # noqa: E402
+from operation_controller_cli import _interaction_document  # noqa: E402
+from workbook_adapter import (  # noqa: E402
     ControllerCodeModeBinding,
-    _execute_code as controller_execute_code,
-    _inspect_code as controller_inspect_code,
-    _interaction_document,
-    _serve as serve_controller,
+    WorkbookAdapterService,
+    binding_path,
+    execution_code as controller_execute_code,
+    inspection_code as controller_inspect_code,
+    release_path,
 )
 from bootstrap_client.admission import CodeModeAdmissionContract  # noqa: E402
 from bootstrap_client.binding import (  # noqa: E402
@@ -32,26 +31,21 @@ from bootstrap_client.binding import (  # noqa: E402
     local_client_identity,
     local_skill_identity,
 )
-from bootstrap_client.generated.models import (  # noqa: E402
-    SessionBinding,
-    digest_json,
-    digest_text,
-)
+from bootstrap_client.generated.models import digest_json, digest_text  # noqa: E402
 from bootstrap_client.mcp_adapter import AdapterResult  # noqa: E402
 from supervisory_hooks.cli import main as hook_cli_main  # noqa: E402
 from supervisory_hooks.controller import (  # noqa: E402
     ControllerRequest,
     execute_controller_request,
+    validate_controller_request,
 )
 from supervisory_hooks.execution_transport import classify_execution_argv  # noqa: E402
 from supervisory_hooks.ledger import DurableLedger  # noqa: E402
 from supervisory_hooks.models import PostToolUseInput, PreToolUseInput  # noqa: E402
 from supervisory_hooks.policy import project_evidence  # noqa: E402
 from supervisory_hooks.routing import (  # noqa: E402
-    decode_controller_request,
     encode_controller_request,
     plan_pretool_route,
-    restore_posttool_event,
     strict_shell_tokens,
 )
 from supervisory_hooks.supervisor import Supervisor  # noqa: E402
@@ -232,21 +226,16 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         argv.extend((operation, str(self.requests[operation].relative_to(ROOT))))
         return tuple(argv)
 
-    def test_general_bash_is_redirected_to_disposable_controller_workbook(self) -> None:
+    def test_general_bash_redirects_to_typed_workbook_adapter(self) -> None:
         response = _run_wire(_pre(), self.data_dir / "wire")
         specific = response["hookSpecificOutput"]
         self.assertEqual(specific["permissionDecision"], "deny")
         route = plan_pretool_route(_pre(), ROOT)
         self.assertEqual(route.behavior, "redirect")
-        assert route.redirect_command is not None
-        tokens = strict_shell_tokens(route.redirect_command)
-        self.assertIsNotNone(tokens)
-        assert tokens is not None
-        self.assertEqual(tokens[0], str(ROOT / ".venv/bin/python"))
-        self.assertEqual(tokens[1], str(ROOT / "src/cue-workbook/operation_controller_cli.py"))
-        self.assertEqual(tokens[2:5], ("--repository-root", str(ROOT), "--payload"))
-        self.assertEqual(tokens[-1], "serve")
-        request = decode_controller_request(tokens[-2])
+        self.assertIsNone(route.redirect_command)
+        self.assertIn("workbook.bind_operation", route.reason or "")
+        request = route.request
+        assert request is not None
         self.assertEqual(request.target_id, "shell.read")
         self.assertEqual(request.argv, ("rg", "hook", "src"))
         self.assertEqual(request.operation_id, "tool-1")
@@ -289,12 +278,14 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         )
         redirect = plan_pretool_route(patch_event, ROOT)
         self.assertEqual(redirect.behavior, "redirect")
-        assert redirect.redirect_command is not None
-        redirect_tokens = strict_shell_tokens(redirect.redirect_command)
-        assert redirect_tokens is not None
+        request = redirect.request
+        assert request is not None
         controller_event = _pre(
-            "Bash",
-            {"command": shlex.join((*redirect_tokens[:-1], "execute"))},
+            "mcp__workbook__execute_operation",
+            {
+                "request": request.model_dump(by_alias=True, mode="json", exclude_none=True),
+                "binding": {"requestIdentity": request.identity},
+            },
         )
         scope = {
             "activity": "implement",
@@ -342,7 +333,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         assert receipt.receipt_path is not None
         self.assertTrue(Path(receipt.receipt_path).is_file())
 
-    def test_tool_exec_is_redirected_to_disposable_controller_workbook(self) -> None:
+    def test_optional_tool_exec_redirects_to_typed_workbook_adapter(self) -> None:
         event = _pre(
             "tool_exec",
             {"argv": ["git", "status"], "yield_time_ms": 1000},
@@ -351,12 +342,9 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(response["hookSpecificOutput"]["permissionDecision"], "deny")
         route = plan_pretool_route(event, ROOT)
         self.assertEqual(route.behavior, "redirect")
-        assert route.redirect_command is not None
-        controller_argv = strict_shell_tokens(route.redirect_command)
-        assert controller_argv is not None
-        self.assertEqual(controller_argv[0], str(ROOT / ".venv/bin/python"))
-        self.assertEqual(controller_argv[-1], "serve")
-        request = decode_controller_request(controller_argv[-2])
+        self.assertIsNone(route.redirect_command)
+        request = route.request
+        assert request is not None
         self.assertEqual(request.proposed_tool_name, "tool_exec")
         self.assertEqual(request.argv, ("git", "status"))
         self.assertEqual(request.tool_input, event.tool_input)
@@ -600,74 +588,64 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
         self.assertEqual(_run_wire(event, self.data_dir / "marimo"), {})
 
-    def test_general_mcp_without_adapter_is_denied_explicitly(self) -> None:
+    def test_git_mcp_uses_its_typed_adapter_directly(self) -> None:
         event = _pre("mcp__git_mcp_server__git_status", {})
         route = plan_pretool_route(event, ROOT)
-        self.assertEqual((route.category, route.behavior), ("general", "redirect"))
-        response = _run_wire(event, self.data_dir / "git-mcp")
-        specific = response["hookSpecificOutput"]
-        self.assertEqual(specific["permissionDecision"], "deny")
-        self.assertIn("no exact controller adapter", specific["permissionDecisionReason"])
+        self.assertEqual(
+            (route.category, route.behavior, route.target_id),
+            ("typed-adapter", "direct", "git.read"),
+        )
+        self.assertEqual(_run_wire(event, self.data_dir / "git-mcp"), {})
 
-    def test_apply_patch_redirect_carries_exact_code_mode_lifecycle(self) -> None:
+    def test_apply_patch_redirect_names_typed_workbook_lifecycle(self) -> None:
         patch_event = _pre(
             "apply_patch",
             {"command": "*** Begin Patch\n*** Update File: justfile\n*** End Patch"},
         )
         route = plan_pretool_route(patch_event, ROOT)
         self.assertEqual((route.category, route.behavior), ("general", "redirect"))
-        self.assertIsNotNone(route.redirect_command)
-        controller_event = _pre(
-            "Bash",
-            {"command": route.redirect_command},
-            tool_use_id="controller-1",
+        self.assertIsNone(route.redirect_command)
+        self.assertIn("workbook.bind_operation", route.reason or "")
+        request = route.request
+        assert request is not None
+        bind_route = plan_pretool_route(
+            _pre(
+                "mcp__workbook__bind_operation",
+                {"request": request.model_dump(by_alias=True, mode="json")},
+            ),
+            ROOT,
         )
-        controller_route = plan_pretool_route(controller_event, ROOT)
         self.assertEqual(
-            (controller_route.category, controller_route.behavior),
+            (bind_route.category, bind_route.behavior),
             ("workbook-centric", "direct"),
         )
-        self.assertIsNone(controller_route.semantic_event)
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
-        execute_event = _pre(
-            "Bash",
-            {"command": shlex.join((*serve_tokens[:-1], "execute"))},
-            tool_use_id="controller-2",
-        )
+        execute_event = _pre("mcp__workbook__execute_operation", {"request": request.model_dump(by_alias=True, mode="json"), "binding": {}})
         execute_route = plan_pretool_route(execute_event, ROOT)
         self.assertEqual(
             (execute_route.category, execute_route.behavior),
-            ("general", "direct"),
+            ("workbook-centric", "direct"),
         )
-        assert execute_route.semantic_event is not None
-        self.assertEqual(execute_route.semantic_event.tool_name, "apply_patch")
-        self.assertEqual(execute_route.semantic_event.tool_input, patch_event.tool_input)
 
-    def test_disposable_controller_emits_closed_code_mode_commands(self) -> None:
+    def test_optional_cli_emits_closed_operator_commands(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
         binding = ControllerCodeModeBinding(
             requestIdentity=request.identity,
+            serverEndpoint=CODE_MODE_ENDPOINT,
             workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
             workbookDigest=digest_file(WORKBOOK_ROOT / "operation-controller.py"),
-            serverPID=123,
-            session={
-                "sessionID": "controller-session-1",
-                "workbookPath": str(WORKBOOK_ROOT / "operation-controller.py"),
-                "sessionMetadataDigest": digest_text("controller-session"),
-                "resolvedAtSequence": 0,
-            },
+            sessionID="controller-session-1",
+            sessionDigest=digest_text("controller-session"),
+            resolvedAtSequence=0,
         )
-        assert route.redirect_command is not None
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
+        payload = encode_controller_request(request)
         document = _interaction_document(
             binding,
             self.data_dir / "binding.json",
             ROOT,
-            serve_tokens[-2],
+            CODE_MODE_ENDPOINT,
+            payload,
         )
         commands = document["commands"]
         assert isinstance(commands, dict)
@@ -688,141 +666,69 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                     operation == "execute",
                 )
 
-    def test_disposable_controller_starts_bound_marimo_code_mode(self) -> None:
+    def test_controller_binds_existing_shared_code_mode_session(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
-        assert route.redirect_command is not None
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
-        session = SessionBinding(
-            sessionID="controller-session-1",
-            workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
-            sessionMetadataDigest=digest_text("controller-session"),
-            resolvedAtSequence=0,
-        )
-        process = Mock(pid=123)
-        with (
-            patch("operation_controller_cli._port_available", return_value=True),
-            patch(
-                "operation_controller_cli._wait_for_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch("operation_controller_cli.subprocess.Popen", return_value=process) as popen,
-        ):
-            document = asyncio.run(
-                serve_controller(
-                    request,
-                    ROOT,
-                    self.data_dir / "controller-state",
-                    serve_tokens[-2],
-                )
-            )
-        command = popen.call_args.args[0]
-        self.assertIn("marimo", command)
-        mcp_index = command.index("--mcp")
-        self.assertEqual(command[mcp_index : mcp_index + 2], ["--mcp", "code-mode"])
-        self.assertIn("--no-skew-protection", command)
-        self.assertEqual(document["state"], "ready")
-        self.assertTrue(Path(document["bindingPath"]).is_file())
+        metadata = {
+            "name": "operation-controller.py",
+            "path": str(WORKBOOK_ROOT / "operation-controller.py"),
+            "session_id": "controller-session-1",
+        }
 
-    def test_disposable_controller_real_serve_inspect_close_cycle(self) -> None:
-        route = plan_pretool_route(_pre(), ROOT)
-        assert route.redirect_command is not None
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
-        state_root = self.data_dir / "real-controller-state"
-        environment = os.environ.copy()
-        environment["CUESTRAP_CONTROLLER_DATA_DIR"] = str(state_root)
+        async def call_tool(name, arguments):
+            self.assertEqual(name, "list_sessions")
+            return {"sessions": [metadata]}
 
-        served = subprocess.run(
-            serve_tokens,
-            cwd=ROOT,
-            env=environment,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=30,
+        service = WorkbookAdapterService(
+            ROOT,
+            CODE_MODE_ENDPOINT,
+            state_root=self.data_dir / "controller-state",
+            adapter=code_mode_client.MCPAdapter(CODE_MODE_ENDPOINT, call_tool=call_tool),
         )
-        self.assertEqual(served.returncode, 0, served.stderr or served.stdout)
-        document = json.loads(served.stdout)
-        commands = document["commands"]
-        assert isinstance(commands, dict)
-        try:
-            inspected = subprocess.run(
-                shlex.split(commands["inspect"]),
-                cwd=ROOT,
-                env=environment,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=30,
-            )
-        finally:
-            closed = subprocess.run(
-                shlex.split(commands["close"]),
-                cwd=ROOT,
-                env=environment,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=30,
-            )
+        binding = asyncio.run(service.bind_operation(request))
+        self.assertEqual(binding.session_id, "controller-session-1")
+        self.assertEqual(binding.server_endpoint, CODE_MODE_ENDPOINT)
+        self.assertTrue(
+            binding_path(request, service.state_root).is_file()
+        )
 
-        self.assertEqual(document["state"], "ready")
-        self.assertEqual(
-            inspected.returncode,
-            0,
-            inspected.stderr or inspected.stdout,
-        )
-        inspection = json.loads(inspected.stdout)
-        self.assertEqual(
-            inspection["request"]["requestIdentity"],
-            document["requestIdentity"],
-        )
-        self.assertEqual(closed.returncode, 0, closed.stderr or closed.stdout)
-        self.assertEqual(json.loads(closed.stdout)["state"], "closed")
-
-    def test_degraded_controller_close_does_not_require_mcp(self) -> None:
+    def test_controller_release_is_durable_and_revokes_binding(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
-        binding = ControllerCodeModeBinding(
-            requestIdentity=request.identity,
-            workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
-            workbookDigest=digest_file(WORKBOOK_ROOT / "operation-controller.py"),
-            serverPID=123,
-            session={
-                "sessionID": "controller-session-1",
-                "workbookPath": str(WORKBOOK_ROOT / "operation-controller.py"),
-                "sessionMetadataDigest": digest_text("controller-session"),
-                "resolvedAtSequence": 0,
-            },
-        )
-        with (
-            patch("operation_controller_cli._load_binding", return_value=binding),
-            patch("operation_controller_cli.os.getpgid", return_value=123),
-            patch("operation_controller_cli.os.killpg") as killpg,
-            patch(
-                "operation_controller_cli._process_matches",
-                side_effect=[True, False],
-            ),
-            patch("operation_controller_cli._port_available", return_value=True),
-            patch(
-                "operation_controller_cli._resolve_live_session",
-                new=AsyncMock(side_effect=RuntimeError("MCP unavailable")),
-            ) as resolve,
-        ):
-            closed = asyncio.run(
-                operation_controller_cli._close(request, ROOT, self.data_dir)
-            )
+        calls: list[str] = []
 
-        self.assertEqual(closed["state"], "closed")
-        killpg.assert_called_once_with(123, signal.SIGTERM)
-        resolve.assert_not_called()
+        async def call_tool(name, arguments):
+            calls.append(name)
+            if name == "list_sessions":
+                return {
+                    "sessions": [
+                        {
+                            "name": "operation-controller.py",
+                            "path": str(WORKBOOK_ROOT / "operation-controller.py"),
+                            "session_id": "controller-session-1",
+                        }
+                    ]
+                }
+            raise AssertionError("released binding reached execute_code")
+
+        service = WorkbookAdapterService(
+            ROOT,
+            CODE_MODE_ENDPOINT,
+            state_root=self.data_dir / "release-state",
+            adapter=code_mode_client.MCPAdapter(CODE_MODE_ENDPOINT, call_tool=call_tool),
+        )
+        binding = asyncio.run(service.bind_operation(request))
+        closed = asyncio.run(service.release_binding(request, binding))
+        repeated = asyncio.run(service.release_binding(request, binding))
+
+        self.assertEqual(closed["state"], "released")
+        self.assertEqual(repeated["state"], "already-released")
+        self.assertTrue(release_path(request, service.state_root).is_file())
+        with self.assertRaisesRegex(RuntimeError, "binding-released"):
+            asyncio.run(service.inspect_operation(request, binding))
+        self.assertNotIn("execute_code", calls)
 
     def test_code_mode_templates_preserve_structured_receipts_and_read_only_diagnostics(
         self,
@@ -830,9 +736,13 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         route = plan_pretool_route(_pre(), ROOT)
         request = route.request
         assert request is not None
-        execute_code = controller_execute_code(request)
-        inspect_code = controller_inspect_code(request, include_receipt=False)
-        diagnose_code = controller_inspect_code(request, include_receipt=True)
+        execute_code = controller_execute_code(request, ROOT, self.data_dir)
+        inspect_code = controller_inspect_code(
+            request, ROOT, self.data_dir, include_receipt=False
+        )
+        diagnose_code = controller_inspect_code(
+            request, ROOT, self.data_dir, include_receipt=True
+        )
         for source in (execute_code, inspect_code, diagnose_code):
             compile(source, "<operation-controller-code-mode>", "exec")
         self.assertIn("execute_controller_request", execute_code)
@@ -842,43 +752,42 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertIn("read_controller_receipt", diagnose_code)
         self.assertNotIn("edit_cell", diagnose_code)
 
-    def test_redirected_post_restores_original_semantic_action(self) -> None:
+    def test_typed_workbook_post_records_underlying_semantic_target(self) -> None:
         event = _pre()
         route = plan_pretool_route(event, ROOT)
-        assert route.redirect_command is not None
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
+        request = route.request
+        assert request is not None
         controller_event = _pre(
-            tool_input={"command": shlex.join((*serve_tokens[:-1], "execute"))},
+            "mcp__workbook__execute_operation",
+            {
+                "request": request.model_dump(by_alias=True, mode="json", exclude_none=True),
+                "binding": {"requestIdentity": request.identity},
+            },
             tool_use_id="controller-1",
         )
-        controller_route = plan_pretool_route(controller_event, ROOT)
-        assert controller_route.semantic_event is not None
-        self.supervisor.handle_pre(controller_route.semantic_event)
-        effective_post = _post(controller_event, {"exit_code": 0})
-        restored = restore_posttool_event(effective_post, ROOT)
-        self.assertEqual(restored.tool_name, "Bash")
-        self.assertEqual(restored.tool_input, {"command": "rg hook src"})
-        self.supervisor.handle_post(restored)
+        self.supervisor.handle_pre(controller_event)
+        self.supervisor.handle_post(_post(controller_event, {"returnCode": 0}))
         projection = project_evidence(self.ledger.read_records())
         self.assertEqual(len(projection.observations), 1)
         self.assertEqual(projection.observations[0].target_id, "shell.read")
         self.assertEqual(self.ledger.read_state().pending, {})
 
-    def test_redirected_tool_exec_post_restores_canonical_action(self) -> None:
+    def test_optional_tool_exec_retains_semantics_in_typed_adapter(self) -> None:
         event = _pre("tool_exec", {"argv": ["git", "status"], "yield-time_ms": 1000})
         route = plan_pretool_route(event, ROOT)
-        assert route.redirect_command is not None
-        serve_tokens = strict_shell_tokens(route.redirect_command)
-        assert serve_tokens is not None
+        request = route.request
+        assert request is not None
         controller_event = _pre(
-            tool_input={"command": shlex.join((*serve_tokens[:-1], "execute"))},
+            "mcp__workbook__execute_operation",
+            {
+                "request": request.model_dump(by_alias=True, mode="json", exclude_none=True),
+                "binding": {"requestIdentity": request.identity},
+            },
             tool_use_id="controller-1",
         )
-        effective_post = _post(controller_event, {"exit_code": 0})
-        restored = restore_posttool_event(effective_post, ROOT)
-        self.assertEqual(restored.tool_name, "Bash")
-        self.assertEqual(restored.tool_input, {"command": "git status"})
+        direct = plan_pretool_route(controller_event, ROOT)
+        self.assertEqual((direct.category, direct.behavior), ("workbook-centric", "direct"))
+        self.assertEqual(request.target_id, "git.read")
 
     def test_controller_executes_once_and_replays_receipt(self) -> None:
         route = plan_pretool_route(_pre(), ROOT)
@@ -921,18 +830,13 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             "turn_id": "other-turn",
             "operation_id": "other-operation",
         }
-        assert route.redirect_command is not None
-        tokens = strict_shell_tokens(route.redirect_command)
-        assert tokens is not None
         for field, value in mutations.items():
             with self.subTest(field=field):
                 tampered = request.model_copy(update={field: value})
-                command = shlex.join(
-                    (*tokens[:-2], encode_controller_request(tampered), tokens[-1])
-                )
-                result = plan_pretool_route(_pre(tool_input={"command": command}), ROOT)
-                self.assertEqual((result.category, result.behavior), ("general", "redirect"))
-                self.assertIn("revalidation", result.reason)
+                with self.assertRaises(ValueError):
+                    ControllerRequest.model_validate(
+                        tampered.model_dump(by_alias=True, mode="json", exclude_none=True)
+                    )
 
     def test_shell_expansion_is_not_reinterpreted_as_literal_argv(self) -> None:
         for command in (

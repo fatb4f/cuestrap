@@ -1,49 +1,57 @@
 # CUEstrap supervisory hooks
 
-The project hook recognizes two action categories and routes them through distinct workbook surfaces:
+The project hook recognizes direct typed adapters and uncovered effects:
 
 ```text
 proposed action
-    ├── target-workbook action → existing Marimo/code-mode path remains direct
-    └── general shell/tool action → fresh disposable operation-controller workbook
+    ├── Git/CUE/gopls action → existing typed MCP adapter remains direct
+    ├── target-workbook action → typed workbook MCP adapter remains direct
+    └── uncovered typed effect → typed operation-workbook lifecycle
 ```
 
 This is an experimental transport and anti-churn boundary. It is not issue #7's native CUE authority, a complete System B implementation, or a universal Codex interception boundary.
 
 ## Target-workbook actions
 
-These remain on the existing target-workbook path:
+These remain on the typed target-workbook path:
 
-- Marimo code-mode MCP calls;
-- exact constrained `code_mode_client.py` operations;
-- exact `workbook_cli.py` evaluation and probe operations through the repository Python.
+- `workbook.resolve_session` and `workbook.capture_state`;
+- `workbook.run_probe` and `workbook.apply_transaction`;
+- exact Marimo sessions selected internally by path and immutable binding.
 
-Workbook routing is structural. A command must invoke the exact adapter and admitted operation. File operations that merely mention `code_mode_client.py` or `workbook_cli.py` remain general actions and are routed through the disposable controller.
+The configured `workbook` MCP server is the agent-facing adapter. It delegates
+to Marimo's `list_sessions` and `execute_code` primitives internally. The
+code-mode and operation-controller CLIs remain optional operator/test frontends
+over the same libraries.
+
+Workbook routing is structural. A call must use an exported workbook MCP tool
+and satisfy its closed input schema. File operations that merely mention adapter
+or CLI filenames remain ordinary file operations.
 
 The target workbook is the active experiment substrate and canonical interactive iteration record. It does not supervise or authorize its own mutations.
 
 ## General actions
 
-Recognized atomic Bash and `tool_exec` actions are denied with the exact command
-that instantiates a fresh, request-bound Marimo code-mode runtime from
-`src/cue-workbook/operation-controller.py` through
-`operation_controller_cli.py`. The agent must re-issue that command; the hook
-does not rewrite the original tool input.
+The project configuration sets `[features].shell_tool = false`, so Codex does
+not offer its default shell tool in a new session. Exact argv operations use
+`workbook.bind_operation`; the controller executes them with `shell=False`.
+Typed MCP adapters remain direct. A shell-dependent operation requires a
+separate explicitly authorized capability and is never an automatic fallback.
 
-The instantiation command returns an exact-session binding and four closed
-follow-up commands:
+The binding tool returns an exact-session binding used by four closed follow-up
+tools:
 
 ```text
-inspect     → request, graph identity, and cell errors
-execute     → one claim-protected effect and the complete structured receipt
-diagnose    → read-only cell outputs, errors, state identity, and receipt
-close       → terminate the disposable loopback-only runtime
+inspect_operation   → request, graph identity, and cell errors
+execute_operation   → one claim-protected effect and the structured receipt
+collect_diagnosis   → read-only outputs, errors, state identity, and receipt
+release_binding     → durably revoke the binding without terminating the shared server
 ```
 
-Only `execute` is restored to the proposed semantic action for supervisory
-evidence. `inspect`, `diagnose`, and `close` remain workbook-centric lifecycle
-operations. The agent uses these exact commands instead of raw Marimo
-`execute_code` calls or a batch subprocess facade.
+The typed `execute_operation` request carries the original controller request,
+so supervisory evidence retains the underlying semantic target without
+reconstructing it from a CLI process. The other calls remain workbook-centric
+lifecycle observations.
 
 The controller's reactive graph exposes:
 
@@ -58,14 +66,18 @@ closed identity-bound request
     → terminal receipt
 ```
 
-Bash input enters this path only when shell parsing and direct argv execution have identical meaning. Compound, piped, redirected, substituted, globbed, brace-expanded, expansion-dependent, malformed, and unknown Bash forms remain outside the controller vocabulary.
+`tool_exec`, when the host exposes it, accepts a closed command-bearing input
+shape. It is optional and is not confused with Git MCP or required as workbook
+qualification evidence.
 
-`tool_exec` accepts a closed command-bearing input shape. Both transports reduce
-to one canonical argv semantic action before provisional evidence reduction.
+The controller executes canonical argv with `shell=False`. The operation service
+also retains the exact `apply_patch` adapter; an original call is denied with a
+typed workbook request because a Codex hook cannot replace one tool kind with
+another.
 
-The controller executes canonical argv with `shell=False`. The initial typed tool adapter supports `apply_patch`; an original `apply_patch` call is denied with the exact controller command because a Codex hook can replace tool input but cannot change the tool kind into Bash or `tool_exec`.
-
-General MCP operations without a typed controller adapter are denied explicitly. They are not silently treated as governed or translated into approximate shell commands.
+Git MCP, CUE LSP, gopls, Marimo code-mode, and workbook MCP operations use their
+typed adapters directly. Unknown MCP operations are not translated into shell
+commands.
 
 ## Request identity and one-use effect transaction
 
@@ -90,11 +102,13 @@ $(git rev-parse --git-common-dir)/cuestrap-operation-controller/<operation-key>/
 ├── claim.json
 ├── receipt.json
 ├── code-mode-binding.json
-├── code-mode.stdout.log
-└── code-mode.stderr.log
+└── release.json
 ```
 
-The request and receipt make the disposable workbook reconstructable. The reactive DAG is the current causal view, not the sole append-only authority.
+The request and receipt make the operation binding reconstructable. A durable
+release record rejects later inspect, execute, and diagnosis calls with
+`binding-released`. The reactive DAG is the current causal view, not the sole
+append-only authority.
 
 ## Hook state and evidence
 
@@ -139,7 +153,7 @@ No Just recipe owns admission, tactical conclusions, execution identity, or shel
 
 The repository hook emits only supported wire responses:
 
-- `deny` with an actionable exact code-mode instantiation command for a required workbook reproposal or local provisional denial;
+- `deny` with an actionable typed workbook request for a required reproposal or local provisional denial;
 - no permission decision for direct or unclassified traffic;
 - diagnostic context without manufactured approval on adapter failure.
 
