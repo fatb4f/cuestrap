@@ -36,10 +36,19 @@ package s04
 		}
 	}
 
+	// The dynamic key makes every normalized fact ID unique. Two rules that
+	// claim the same normalized fact ID but have different rule IDs bottom.
+	_normalizedFactProducers: {
+		for RuleID, Rule in R.normalizationRules {
+			"\(Rule.normalizedFactID)": RuleID
+		}
+	}
+
 	_comparisonRules: {
 		for RuleID, Rule in R.comparisonRules {
 			"\(RuleID)": {
 				expectedFact: R.expectedFacts[Rule.expectedFactID]
+				normalizationRuleID: _normalizedFactProducers[Rule.normalizedFactID]
 			}
 		}
 	}
@@ -66,6 +75,9 @@ package s04
 				}]
 				expectedFacts: [for _, FactID in Case.expectedFactIDs {
 					R.expectedFacts[FactID]
+				}]
+				normalizationRules: [for _, RuleID in Case.normalizationRuleIDs {
+					R.normalizationRules[RuleID]
 				}]
 				comparisonRules: [for _, RuleID in Case.comparisonRuleIDs {
 					R.comparisonRules[RuleID]
@@ -111,7 +123,8 @@ package s04
 		role: "raw-observer"
 	}
 	ingress: {
-		comparisonRuleIDs: _caseReference.comparisonRuleIDs
+		normalizationRuleIDs: _caseReference.normalizationRuleIDs
+		comparisonRuleIDs:    _caseReference.comparisonRuleIDs
 		observation: {
 			caseID: ingress.caseID
 		}
