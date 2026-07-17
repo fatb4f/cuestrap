@@ -98,7 +98,7 @@ sliceOutput: #S04ContractBundleManifest & {
 	]
 
 	qualification: {
-		disposition:       "indeterminate"
+		disposition:       "qualified"
 		evaluatorRevision: "806821e40fae070318600a264d311517e596353b"
 		languageVersion:   "v0.18.0"
 		goVersion:         "1.25.5"
@@ -109,9 +109,8 @@ sliceOutput: #S04ContractBundleManifest & {
 			"cue eval pattern/s04/*.cue -e validation.indeterminate.judgement.outcome --out text",
 			"expected-bottom validation for binary validate, foreign semantic references, and foreign projection cases",
 		]
-		diagnostics: [{
-			code:    "exact-source-validation-pending"
-			message: "The exact frozen source set has not yet been qualified."
-		}]
+		evidenceDigest: "sha256:86a7b3fa2dac8608032356353fcd5667910a223c58b62a1c270fcb9eb9b59fce"
+		workflowRunID:  29611456830
+		artifactID:     8418883568
 	}
 }
