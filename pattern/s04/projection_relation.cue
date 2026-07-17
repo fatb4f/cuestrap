@@ -37,14 +37,14 @@ import "list"
 		realization: R
 	}
 
-	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
+	_semanticAuthorityIDs:        [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
 	_packageDeclarerAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "package-declarer" {ID}]
-	_rawObserverAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "raw-observer" {ID}]
-	_realizationCaseIDs: [for ID, _ in R.cases {ID}]
-	_requestedCaseIDs: [for ID, _ in Q.caseMap {ID}]
-	_packageCaseIDs: [for ID, _ in P.cases {ID}]
+	_rawObserverAuthorityIDs:     [for ID, Authority in R.authorities if Authority.role == "raw-observer" {ID}]
+	_realizationCaseIDs:          [for ID, _ in R.cases {ID}]
+	_requestedCaseIDs:            [for ID, _ in Q.caseMap {ID}]
+	_packageCaseIDs:              [for ID, _ in P.cases {ID}]
 
-	_semanticAuthorityExists: true & list.Contains(_semanticAuthorityIDs, Q.semanticAuthorityID)
+	_semanticAuthorityExists:        true & list.Contains(_semanticAuthorityIDs, Q.semanticAuthorityID)
 	_packageDeclarerAuthorityExists: true & list.Contains(_packageDeclarerAuthorityIDs, Q.packageDeclarerAuthorityID)
 	_rawObserverAuthoritiesExist: [for AuthorityID in Q.rawObserverAuthorityIDs {
 		true & list.Contains(_rawObserverAuthorityIDs, AuthorityID)
