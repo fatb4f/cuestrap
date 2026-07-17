@@ -1,0 +1,343 @@
+{
+  "profile": "s04-kattis-ppf-v0",
+  "metadata": {
+    "id": "s04.lt-01",
+    "title": "LT-01 directional ordering",
+    "version": "0.1.0",
+    "family": "LT-01"
+  },
+  "authorities": {
+    "s04": {
+      "id": "s04-v0",
+      "role": "semanticAuthority",
+      "reference": {
+        "kind": "cuePackage",
+        "path": "pattern/s04"
+      }
+    },
+    "fixtures": {
+      "id": "lt-01-fixtures",
+      "role": "fixtureAuthority",
+      "reference": {
+        "kind": "packageArtifact",
+        "path": "tests/fixtures/s04-lt01-package.json"
+      }
+    },
+    "runner": {
+      "id": "cuestrap-native-probe-v0",
+      "role": "executionAuthority",
+      "reference": {
+        "kind": "packageArtifact",
+        "path": "runner"
+      }
+    }
+  },
+  "authorization": {
+    "permittedBackends": [
+      "gopy-worker",
+      "cueprobe"
+    ],
+    "permittedAdapters": [
+      "cuestrap-native-probe/v0"
+    ],
+    "requireAuthorityDigest": false,
+    "requireCandidateIdentity": true
+  },
+  "realization": {
+    "id": "lt-01",
+    "family": "LT-01",
+    "description": "Directional CUE ordering separated from unification, transport failure, and capability absence.",
+    "cases": {
+      "directional-success": {
+        "id": "directional-success",
+        "polarity": "accepted",
+        "subject": {
+          "id": "general-to-specific",
+          "kind": "cueSchema",
+          "structure": {
+            "subjectExpression": "#LT01General",
+            "candidateExpression": "#LT01Specific"
+          }
+        },
+        "operation": {
+          "id": "lt-01-directional-subsumes",
+          "operation": {
+            "kind": "subsumes",
+            "operands": [
+              {
+                "role": "subject",
+                "ref": "#LT01General"
+              },
+              {
+                "role": "candidate",
+                "ref": "#LT01Specific"
+              }
+            ]
+          },
+          "requires": [
+            {
+              "capability": "exact-directional-subsumption",
+              "level": "required",
+              "absenceMeans": "unsupported"
+            }
+          ],
+          "produces": [
+            "orderingHolds"
+          ]
+        },
+        "claim": {
+          "id": "general-orders-specific",
+          "kind": "orders",
+          "expected": [
+            {
+              "source": "package",
+              "id": "expected-directional-ordering",
+              "kind": "orderingHolds",
+              "value": true
+            }
+          ],
+          "compare": {
+            "mode": "allExpectedObserved"
+          }
+        }
+      },
+      "reverse-direction-rejection": {
+        "id": "reverse-direction-rejection",
+        "polarity": "rejected",
+        "subject": {
+          "id": "specific-to-general",
+          "kind": "cueSchema",
+          "structure": {
+            "subjectExpression": "#LT01Specific",
+            "candidateExpression": "#LT01General"
+          }
+        },
+        "operation": {
+          "id": "lt-01-reverse-subsumes",
+          "operation": {
+            "kind": "subsumes",
+            "operands": [
+              {
+                "role": "subject",
+                "ref": "#LT01Specific"
+              },
+              {
+                "role": "candidate",
+                "ref": "#LT01General"
+              }
+            ]
+          },
+          "requires": [
+            {
+              "capability": "exact-directional-subsumption",
+              "level": "required",
+              "absenceMeans": "unsupported"
+            }
+          ],
+          "produces": [
+            "orderingDoesNotHold"
+          ]
+        },
+        "claim": {
+          "id": "specific-does-not-order-general",
+          "kind": "doesNotOrder",
+          "expected": [
+            {
+              "source": "package",
+              "id": "expected-reverse-rejection",
+              "kind": "orderingDoesNotHold",
+              "value": true
+            }
+          ],
+          "compare": {
+            "mode": "allExpectedObserved"
+          }
+        }
+      },
+      "adversarial-structural-rejection": {
+        "id": "adversarial-structural-rejection",
+        "polarity": "rejected",
+        "subject": {
+          "id": "unifies-without-ordering",
+          "kind": "cueSchema",
+          "structure": {
+            "subjectExpression": "#LT01AdversarialLeft",
+            "candidateExpression": "#LT01AdversarialRight",
+            "adversarialProperty": "operands unify but directional subsumption does not hold"
+          }
+        },
+        "operation": {
+          "id": "lt-01-adversarial-subsumes",
+          "operation": {
+            "kind": "subsumes",
+            "operands": [
+              {
+                "role": "subject",
+                "ref": "#LT01AdversarialLeft"
+              },
+              {
+                "role": "candidate",
+                "ref": "#LT01AdversarialRight"
+              }
+            ]
+          },
+          "requires": [
+            {
+              "capability": "exact-directional-subsumption",
+              "level": "required",
+              "absenceMeans": "unsupported"
+            }
+          ],
+          "produces": [
+            "orderingDoesNotHold"
+          ]
+        },
+        "claim": {
+          "id": "unification-does-not-manufacture-ordering",
+          "kind": "doesNotOrder",
+          "expected": [
+            {
+              "source": "package",
+              "id": "expected-adversarial-rejection",
+              "kind": "orderingDoesNotHold",
+              "value": true
+            }
+          ],
+          "compare": {
+            "mode": "allExpectedObserved"
+          }
+        }
+      }
+    }
+  },
+  "capabilities": [
+    {
+      "capability": "exact-directional-subsumption",
+      "level": "required",
+      "absenceMeans": "unsupported"
+    }
+  ],
+  "candidates": {
+    "directional-success": {
+      "id": "directional-success",
+      "caseID": "directional-success",
+      "polarity": "accepted",
+      "requiredVerdict": "accepted",
+      "materialization": {
+        "moduleRoot": ".",
+        "package": "s04",
+        "files": [
+          {
+            "path": "pattern/s04/contracts.cue"
+          },
+          {
+            "path": "pattern/s04/lt01.cue"
+          }
+        ],
+        "subjectExpression": "#LT01General",
+        "candidateExpression": "#LT01Specific"
+      }
+    },
+    "reverse-direction-rejection": {
+      "id": "reverse-direction-rejection",
+      "caseID": "reverse-direction-rejection",
+      "polarity": "rejected",
+      "requiredVerdict": "rejected",
+      "materialization": {
+        "moduleRoot": ".",
+        "package": "s04",
+        "files": [
+          {
+            "path": "pattern/s04/contracts.cue"
+          },
+          {
+            "path": "pattern/s04/lt01.cue"
+          }
+        ],
+        "subjectExpression": "#LT01Specific",
+        "candidateExpression": "#LT01General"
+      }
+    },
+    "adversarial-structural-rejection": {
+      "id": "adversarial-structural-rejection",
+      "caseID": "adversarial-structural-rejection",
+      "polarity": "rejected",
+      "requiredVerdict": "rejected",
+      "materialization": {
+        "moduleRoot": ".",
+        "package": "s04",
+        "files": [
+          {
+            "path": "pattern/s04/contracts.cue"
+          },
+          {
+            "path": "pattern/s04/lt01.cue"
+          }
+        ],
+        "subjectExpression": "#LT01AdversarialLeft",
+        "candidateExpression": "#LT01AdversarialRight"
+      }
+    }
+  },
+  "limits": {
+    "maximumExecutions": 6,
+    "timeoutSeconds": 60,
+    "maximumOutputBytes": 262144,
+    "network": "forbidden"
+  },
+  "evidence": [
+    {
+      "kind": "packageSnapshot",
+      "durable": true,
+      "minimum": 1
+    },
+    {
+      "kind": "rawObservations",
+      "durable": true,
+      "minimum": 2
+    },
+    {
+      "kind": "normalizedFacts",
+      "durable": true,
+      "minimum": 1
+    },
+    {
+      "kind": "comparisonTrace",
+      "durable": true,
+      "minimum": 1
+    },
+    {
+      "kind": "judgement",
+      "durable": true,
+      "minimum": 1
+    },
+    {
+      "kind": "manifest",
+      "durable": true,
+      "minimum": 1
+    }
+  ],
+  "judge": {
+    "moduleRoot": ".",
+    "package": "s04",
+    "files": [
+      {
+        "path": "pattern/s04/contracts.cue"
+      },
+      {
+        "path": "pattern/s04/lt01.cue"
+      }
+    ],
+    "expression": "#PackageJudgement"
+  },
+  "verdictPolicy": {
+    "permitted": [
+      "accepted",
+      "rejected",
+      "indeterminate",
+      "infrastructureFailure",
+      "unsupported",
+      "invalidPackage"
+    ]
+  }
+}
