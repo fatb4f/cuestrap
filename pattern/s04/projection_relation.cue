@@ -1,5 +1,7 @@
 package s04
 
+import "list"
+
 #CueRealizationArtifact: close({
 	digest:      #Digest
 	realization: #CueRealization
@@ -22,7 +24,7 @@ package s04
 // #S04PPFProjectionDerivation proves that the mapping is total over the S04
 // realization, contains no foreign S04 cases, targets existing package cases,
 // and binds every projected authority to the required role.
-#S04PPFProjectionDerivation: close({
+#S04PPFProjectionDerivation: {
 	realizationArtifact: #CueRealizationArtifact
 	package:             #MinimalPPFPackage
 	request:             #S04PPFProjectionRequest
@@ -34,36 +36,32 @@ package s04
 	_realizationIntegrity: #RealizationIntegrity & {
 		realization: R
 	}
-	_semanticAuthority: R.authorities[Q.semanticAuthorityID] & {
-		role: "semantic-authority"
-	}
-	_packageDeclarerAuthority: R.authorities[Q.packageDeclarerAuthorityID] & {
-		role: "package-declarer"
-	}
-	_rawObserverAuthorities: [for _, AuthorityID in Q.rawObserverAuthorityIDs {
-		R.authorities[AuthorityID] & {role: "raw-observer"}
+
+	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
+	_packageDeclarerAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "package-declarer" {ID}]
+	_rawObserverAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "raw-observer" {ID}]
+	_realizationCaseIDs: [for ID, _ in R.cases {ID}]
+	_requestedCaseIDs: [for ID, _ in Q.caseMap {ID}]
+	_packageCaseIDs: [for ID, _ in P.cases {ID}]
+
+	_semanticAuthorityExists: true & list.Contains(_semanticAuthorityIDs, Q.semanticAuthorityID)
+	_packageDeclarerAuthorityExists: true & list.Contains(_packageDeclarerAuthorityIDs, Q.packageDeclarerAuthorityID)
+	_rawObserverAuthoritiesExist: [for AuthorityID in Q.rawObserverAuthorityIDs {
+		true & list.Contains(_rawObserverAuthorityIDs, AuthorityID)
 	}]
 
-	// Every requested source case must exist, which rejects foreign keys.
-	_requestedSourceCases: {
-		for RealizationCaseID, _ in Q.caseMap {
-			"\(RealizationCaseID)": R.cases[RealizationCaseID]
-		}
-	}
+	_caseMapCardinalityMatches: len(Q.caseMap) == len(R.cases)
+	_requestedCasesExist: [for RealizationCaseID, _ in Q.caseMap {
+		true & list.Contains(_realizationCaseIDs, RealizationCaseID)
+	}]
+	_allRealizationCasesMapped: [for RealizationCaseID, _ in R.cases {
+		true & list.Contains(_requestedCaseIDs, RealizationCaseID)
+	}]
+	_targetCasesExist: [for _, PackageCaseID in Q.caseMap {
+		true & list.Contains(_packageCaseIDs, PackageCaseID)
+	}]
 
-	// Every realization case must have exactly one map entry and target an
-	// existing package case. Map keys make the source binding unique.
-	_totalTargetCases: {
-		for RealizationCaseID, _ in R.cases {
-			"\(RealizationCaseID)": P.cases[Q.caseMap[RealizationCaseID]]
-		}
-	}
-
-	package: {
-		validator: {
-			semanticAuthorityID: Q.semanticAuthorityID
-		}
-	}
+	_validatorAuthorityMatches: P.validator.semanticAuthorityID & Q.semanticAuthorityID
 
 	projection: #S04PPFProjection & {
 		projectionID:      Q.projectionID
@@ -87,19 +85,17 @@ package s04
 			}
 		}
 	}
-})
+}
 
 // This is the admitted consumer-profile contract relation. The original
 // #S04ConsumerProfileContract remains the closed data envelope; qualification
 // requires its projection to be the exact output of the derivation above.
-#QualifiedS04ConsumerProfileContract: close({
+#QualifiedS04ConsumerProfileContract: {
 	contract:            #S04ConsumerProfileContract
 	realizationArtifact: #CueRealizationArtifact
 	projectionRequest:   #S04PPFProjectionRequest
 
-	realizationArtifact: {
-		realization: contract.realization
-	}
+	_realizationMatches: contract.realization & realizationArtifact.realization
 
 	_projectionDerivation: #S04PPFProjectionDerivation & {
 		realizationArtifact: realizationArtifact
@@ -107,4 +103,4 @@ package s04
 		request:             projectionRequest
 		projection:          contract.projection
 	}
-})
+}
