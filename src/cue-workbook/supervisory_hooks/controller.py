@@ -122,14 +122,11 @@ class ControllerReceipt(BaseModel):
 
 def semantic_tool_input(request: ControllerRequest) -> tuple[str, object]:
     lowered = request.proposed_tool_name.casefold()
-    if lowered == "bash":
+    if lowered in {"bash", "tool_exec"}:
         assert request.argv is not None
         import shlex
 
         return "Bash", {"command": shlex.join(request.argv)}
-    if lowered == "tool_exec":
-        assert isinstance(request.tool_input, dict)
-        return request.proposed_tool_name, request.tool_input
     return request.proposed_tool_name, request.tool_input
 
 
