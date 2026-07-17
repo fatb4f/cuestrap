@@ -4,7 +4,6 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -31,6 +30,10 @@ _WORKBOOK_CODE_MODE_ACTIONS = frozenset(
         "run-focused-probe",
         "apply-cell-transaction",
     }
+)
+_WORKBOOK_CODE_MODE_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
+_CODE_MODE_OPTIONS = frozenset(
+    {"--endpoint", "--repository-root", "--run-binding", "--session-binding"}
 )
 
 
@@ -156,8 +159,7 @@ def _lexical_executable_path(executable: str, cwd: Path) -> Path | None:
     candidate = Path(executable)
     if candidate.is_absolute() or len(candidate.parts) > 1:
         return Path(os.path.abspath(cwd / candidate))
-    located = shutil.which(executable)
-    return Path(os.path.abspath(located)) if located is not None else None
+    return None
 
 
 def _python_script_index(
@@ -170,18 +172,157 @@ def _python_script_index(
     executable = _lexical_executable_path(argv[0], working_directory) if argv else None
     if len(argv) >= 2 and executable == expected_python:
         return 1
-    expected_uv = _lexical_executable_path("uv", working_directory)
-    if (
-        len(argv) >= 9
-        and executable is not None
-        and executable == expected_uv
-        and argv[1:3] == ("run", "--project")
-        and Path(os.path.abspath(working_directory / argv[3])) == repository_root
-        and argv[4:7] == ("--locked", "--exact", "--")
-        and argv[7] == "python"
-    ):
-        return 8
     return None
+
+
+def _resolved_argument_path(value: str, working_directory: Path) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = working_directory / path
+    return path.resolve(strict=False)
+
+
+def _is_path_within(value: str, root: Path, working_directory: Path) -> bool:
+    try:
+        _resolved_argument_path(value, working_directory).relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _parse_closed_options(
+    tail: tuple[str, ...],
+    admitted_options: frozenset[str],
+) -> tuple[dict[str, str], tuple[str, ...]] | None:
+    options: dict[str, str] = {}
+    positional: list[str] = []
+    index = 0
+    while index < len(tail):
+        token = tail[index]
+        if token in admitted_options:
+            if token in options or index + 1 >= len(tail):
+                return None
+            value = tail[index + 1]
+            if value.startswith("--"):
+                return None
+            options[token] = value
+            index += 2
+            continue
+        if token.startswith("-"):
+            return None
+        positional.append(token)
+        index += 1
+    return options, tuple(positional)
+
+
+def _canonical_repository_root(
+    options: dict[str, str],
+    *,
+    repository_root: Path,
+    working_directory: Path,
+    option: str,
+) -> bool:
+    value = options.get(option)
+    effective = (
+        working_directory
+        if value is None
+        else _resolved_argument_path(value, working_directory)
+    )
+    return effective == repository_root
+
+
+def _closed_code_mode_action(
+    tail: tuple[str, ...],
+    *,
+    repository_root: Path,
+    working_directory: Path,
+) -> str | None:
+    parsed = _parse_closed_options(tail, _CODE_MODE_OPTIONS)
+    if parsed is None:
+        return None
+    options, positional = parsed
+    if len(positional) != 2:
+        return None
+    operation, request = positional
+    if operation not in _WORKBOOK_CODE_MODE_ACTIONS:
+        return None
+    endpoint = options.get("--endpoint", _WORKBOOK_CODE_MODE_ENDPOINT)
+    if endpoint != _WORKBOOK_CODE_MODE_ENDPOINT:
+        return None
+    if not _canonical_repository_root(
+        options,
+        repository_root=repository_root,
+        working_directory=working_directory,
+        option="--repository-root",
+    ):
+        return None
+    run_binding = options.get("--run-binding")
+    session_binding = options.get("--session-binding")
+    if run_binding is None or not _is_path_within(
+        run_binding, repository_root, working_directory
+    ):
+        return None
+    if operation == "resolve-session":
+        if session_binding is not None:
+            return None
+    elif session_binding is None or not _is_path_within(
+        session_binding, repository_root, working_directory
+    ):
+        return None
+    if not _is_path_within(request, repository_root, working_directory):
+        return None
+    return operation
+
+
+def _closed_workbook_cli_action(
+    tail: tuple[str, ...],
+    *,
+    repository_root: Path,
+    working_directory: Path,
+) -> Literal["validate", "probe"] | None:
+    repo_root: str | None = None
+    probe_request: str | None = None
+    validate = False
+    index = 0
+    while index < len(tail):
+        token = tail[index]
+        if token == "--validate":
+            if validate:
+                return None
+            validate = True
+            index += 1
+            continue
+        if token in {"--repo-root", "--probe-request"}:
+            if index + 1 >= len(tail) or tail[index + 1].startswith("--"):
+                return None
+            value = tail[index + 1]
+            if token == "--repo-root":
+                if repo_root is not None:
+                    return None
+                repo_root = value
+            else:
+                if probe_request is not None:
+                    return None
+                probe_request = value
+            index += 2
+            continue
+        return None
+    options = {"--repo-root": repo_root} if repo_root is not None else {}
+    if not _canonical_repository_root(
+        options,
+        repository_root=repository_root,
+        working_directory=working_directory,
+        option="--repo-root",
+    ):
+        return None
+    if validate == (probe_request is not None):
+        return None
+    if validate:
+        return "validate"
+    assert probe_request is not None
+    if not _is_path_within(probe_request, repository_root, working_directory):
+        return None
+    return "probe"
 
 
 def is_exact_workbook_argv(
@@ -195,12 +336,6 @@ def is_exact_workbook_argv(
         return False
     root = repository_root.resolve(strict=True)
     cwd = (working_directory or root).resolve(strict=False)
-    if Path(argv[0]).name == "just":
-        if argv == ("just", "marimo-listener"):
-            return cwd == root
-        if argv == ("just", "--justfile", "justfile", "marimo-listener"):
-            return (cwd / "justfile").resolve(strict=False) == root / "justfile"
-        return False
     script_index = _python_script_index(
         argv,
         repository_root=root,
@@ -218,13 +353,19 @@ def is_exact_workbook_argv(
     if script == "code_mode_client.py":
         return (
             script_path == expected_root / script
-            and bool(tail)
-            and tail[0] in _WORKBOOK_CODE_MODE_ACTIONS
+            and _closed_code_mode_action(
+                tail,
+                repository_root=root,
+                working_directory=cwd,
+            )
+            is not None
         )
     if script == "workbook_cli.py":
-        return script_path == expected_root / script and any(
-            flag in tail for flag in ("--validate", "--probe-request")
-        )
+        return script_path == expected_root / script and _closed_workbook_cli_action(
+            tail,
+            repository_root=root,
+            working_directory=cwd,
+        ) is not None
     return False
 
 
@@ -255,13 +396,19 @@ def classify_execution_argv(
         script = Path(argv[script_index]).name
         tail = argv[script_index + 1 :]
         if script == "code_mode_client.py":
+            action = _closed_code_mode_action(
+                tail,
+                repository_root=root,
+                working_directory=cwd,
+            )
+            assert action is not None
             mapping: dict[str, tuple[TargetID, str]] = {
                 "resolve-session": ("code-mode.resolve-session", "read"),
                 "capture-state": ("code-mode.capture-state", "read"),
                 "run-focused-probe": ("code-mode.run-focused-probe", "probe"),
                 "apply-cell-transaction": ("code-mode.apply-cell-transaction", "mutation"),
             }
-            target, operation_class = mapping[tail[0]]
+            target, operation_class = mapping[action]
             return _canonical_operation(
                 target,
                 operation_class,

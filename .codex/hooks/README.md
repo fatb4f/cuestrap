@@ -16,8 +16,7 @@ These remain on the existing target-workbook path:
 
 - Marimo code-mode MCP calls;
 - exact constrained `code_mode_client.py` operations;
-- exact `workbook_cli.py` evaluation and probe operations;
-- the operator-facing `marimo-listener` recipe.
+- exact `workbook_cli.py` evaluation and probe operations through the repository Python.
 
 Workbook routing is structural. A command must invoke the exact adapter and admitted operation. File operations that merely mention `code_mode_client.py` or `workbook_cli.py` remain general actions and are routed through the disposable controller.
 

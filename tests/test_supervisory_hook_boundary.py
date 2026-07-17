@@ -30,6 +30,24 @@ from supervisory_hooks.supervisor import Supervisor  # noqa: E402
 
 DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
+CODE_MODE_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
+
+
+def _code_mode_argv(operation: str = "capture-state") -> tuple[str, ...]:
+    argv = [
+        ".venv/bin/python",
+        "src/cue-workbook/code_mode_client.py",
+        "--endpoint",
+        CODE_MODE_ENDPOINT,
+        "--repository-root",
+        str(ROOT),
+        "--run-binding",
+        "tests/fixtures/code-mode/run.json",
+    ]
+    if operation != "resolve-session":
+        argv.extend(["--session-binding", "tests/fixtures/code-mode/session.json"])
+    argv.extend((operation, f"tests/fixtures/code-mode/{operation}.json"))
+    return tuple(argv)
 
 
 def _pre(
@@ -125,14 +143,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(request.tool_input, event.tool_input)
 
     def test_workbook_bash_action_remains_direct(self) -> None:
-        event = _pre(
-            tool_input={
-                "command": (
-                    ".venv/bin/python src/cue-workbook/code_mode_client.py "
-                    "capture-state"
-                )
-            }
-        )
+        event = _pre(tool_input={"command": shlex.join(_code_mode_argv())})
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
         self.assertEqual(_run_wire(event, self.data_dir / "workbook"), {})
@@ -140,26 +151,133 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
     def test_workbook_tool_exec_action_remains_direct(self) -> None:
         event = _pre(
             "tool_exec",
-            {"argv": [
-                ".venv/bin/python",
-                "src/cue-workbook/code_mode_client.py",
-                "capture-state",
-            ]},
+            {"argv": list(_code_mode_argv("resolve-session"))},
         )
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
 
-    def test_exact_uv_workbook_action_remains_direct(self) -> None:
-        event = _pre(
-            tool_input={
-                "command": (
-                    "uv run --project . --locked --exact -- python "
-                    "src/cue-workbook/code_mode_client.py capture-state"
-                )
-            }
+    def test_path_selected_launchers_never_remain_direct(self) -> None:
+        shadow = self.data_dir / "shadow-bin"
+        shadow.mkdir()
+        for executable in ("uv", "just"):
+            path = shadow / executable
+            path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            path.chmod(0o755)
+        uv_argv = (
+            "uv",
+            "run",
+            "--project",
+            ".",
+            "--locked",
+            "--exact",
+            "--",
+            "python",
+            *_code_mode_argv()[1:],
         )
-        route = plan_pretool_route(event, ROOT)
-        self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
+        with patch.dict(os.environ, {"PATH": f"{shadow}:{os.environ['PATH']}"}):
+            for command in (shlex.join(uv_argv), "just marimo-listener"):
+                with self.subTest(command=command):
+                    route = plan_pretool_route(
+                        _pre(tool_input={"command": command}), ROOT
+                    )
+                    self.assertEqual(
+                        (route.category, route.behavior),
+                        ("unclassified", "neutral"),
+                    )
+
+    def test_workbook_cli_accepts_only_closed_evaluation_modes(self) -> None:
+        prefix = (
+            ".venv/bin/python",
+            "src/cue-workbook/workbook_cli.py",
+        )
+        admitted = (
+            (*prefix, "--validate"),
+            (*prefix, "--validate", "--repo-root", str(ROOT)),
+            (
+                *prefix,
+                "--probe-request",
+                "tests/fixtures/pilot-request.json",
+                "--repo-root",
+                str(ROOT),
+            ),
+        )
+        for argv in admitted:
+            with self.subTest(argv=argv):
+                route = plan_pretool_route(
+                    _pre("tool_exec", {"argv": list(argv)}), ROOT
+                )
+                self.assertEqual(
+                    (route.category, route.behavior),
+                    ("workbook-centric", "direct"),
+                )
+
+        rejected = (
+            (*prefix, "--validate", "--serve-mcp", "gopls"),
+            (*prefix, "--validate", "--gopy-worker"),
+            (*prefix, "--validate", "--cue-py-worker"),
+            (
+                *prefix,
+                "--validate",
+                "--probe-request",
+                "tests/fixtures/pilot-request.json",
+            ),
+            (*prefix, "--validate", "--unknown"),
+            (*prefix, "--validate", "marimo-passthrough"),
+            (*prefix, "--probe-request", "/tmp/request.json"),
+            (*prefix, "--validate", "--repo-root", "/tmp"),
+        )
+        for argv in rejected:
+            with self.subTest(argv=argv):
+                route = plan_pretool_route(
+                    _pre("tool_exec", {"argv": list(argv)}), ROOT
+                )
+                self.assertEqual(
+                    (route.category, route.behavior),
+                    ("unclassified", "neutral"),
+                )
+
+    def test_code_mode_requires_closed_canonical_coordinates(self) -> None:
+        canonical = _code_mode_argv()
+
+        def replaced(option: str, value: str) -> tuple[str, ...]:
+            argv = list(canonical)
+            argv[argv.index(option) + 1] = value
+            return tuple(argv)
+
+        rejected = (
+            replaced("--endpoint", "http://127.0.0.1:9999/mcp/server"),
+            replaced("--repository-root", "/tmp"),
+            replaced("--run-binding", "/tmp/run.json"),
+            replaced("--session-binding", "/tmp/session.json"),
+            (*canonical[:-1], "/tmp/request.json"),
+            (*canonical, "--unknown", "value"),
+            (*canonical, "run-focused-probe", "tests/fixtures/code-mode/probe.json"),
+            tuple(
+                token
+                for index, token in enumerate(canonical)
+                if index
+                not in {
+                    canonical.index("--run-binding"),
+                    canonical.index("--run-binding") + 1,
+                }
+            ),
+            canonical[:-1],
+            (
+                *_code_mode_argv("resolve-session")[:-2],
+                "--session-binding",
+                "tests/fixtures/code-mode/session.json",
+                *_code_mode_argv("resolve-session")[-2:],
+            ),
+        )
+        for argv in rejected:
+            with self.subTest(argv=argv):
+                route = plan_pretool_route(
+                    _pre("tool_exec", {"argv": list(argv)}), ROOT
+                )
+                self.assertEqual(
+                    (route.category, route.behavior),
+                    ("unclassified", "neutral"),
+                )
 
     def test_workbook_filename_mentions_do_not_bypass_controller(self) -> None:
         for command in (
