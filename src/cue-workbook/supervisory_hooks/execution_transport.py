@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from bootstrap_client.admission import CodeModeAdmissionContract
+
 from .models import Classification, TargetID
 from .policy import (
     _GIT_MUTATION_SUBCOMMANDS,
@@ -31,7 +33,6 @@ _WORKBOOK_CODE_MODE_ACTIONS = frozenset(
         "apply-cell-transaction",
     }
 )
-_WORKBOOK_CODE_MODE_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
 _CODE_MODE_OPTIONS = frozenset(
     {"--endpoint", "--repository-root", "--run-binding", "--session-binding"}
 )
@@ -246,30 +247,30 @@ def _closed_code_mode_action(
     operation, request = positional
     if operation not in _WORKBOOK_CODE_MODE_ACTIONS:
         return None
-    endpoint = options.get("--endpoint", _WORKBOOK_CODE_MODE_ENDPOINT)
-    if endpoint != _WORKBOOK_CODE_MODE_ENDPOINT:
-        return None
-    if not _canonical_repository_root(
-        options,
-        repository_root=repository_root,
-        working_directory=working_directory,
-        option="--repository-root",
-    ):
-        return None
+    contract = CodeModeAdmissionContract.for_repository(repository_root)
+    endpoint = options.get("--endpoint", contract.canonical_endpoint)
+    proposed_root = options.get("--repository-root")
+    effective_root = (
+        working_directory
+        if proposed_root is None
+        else _resolved_argument_path(proposed_root, working_directory)
+    )
     run_binding = options.get("--run-binding")
     session_binding = options.get("--session-binding")
-    if run_binding is None or not _is_path_within(
-        run_binding, repository_root, working_directory
-    ):
+    if run_binding is None:
         return None
-    if operation == "resolve-session":
-        if session_binding is not None:
-            return None
-    elif session_binding is None or not _is_path_within(
-        session_binding, repository_root, working_directory
+    if not contract.admits_invocation(
+        endpoint=endpoint,
+        repository_root=effective_root,
+        run_binding=_resolved_argument_path(run_binding, working_directory),
+        session_binding=(
+            None
+            if session_binding is None
+            else _resolved_argument_path(session_binding, working_directory)
+        ),
+        request=_resolved_argument_path(request, working_directory),
+        operation=operation,
     ):
-        return None
-    if not _is_path_within(request, repository_root, working_directory):
         return None
     return operation
 

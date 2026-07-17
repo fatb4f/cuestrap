@@ -28,11 +28,22 @@ During qualified runs, call only `src/cue-workbook/code_mode_client.py`. Do not 
 
 Every invocation consumes an immutable `bootstrap-run-binding/v1` document. Resolve a session only in `inspect` or `probe`, using a `resolve-session` request whose selection rule is exactly `exactly-one-by-workbook-path`:
 
+The constrained-client admission contract is fixed to the loopback endpoint, this repository root, and these separate operator-artifact roots:
+
+```text
+.codex/code-mode/run-bindings/
+.codex/code-mode/session-bindings/
+.codex/code-mode/requests/
+```
+
+Files outside their respective roots are not admitted even when they are elsewhere in the repository.
+
 ```bash
-uv run --project . --locked --exact -- \
-  python src/cue-workbook/code_mode_client.py \
-  --run-binding RUN.json \
-  resolve-session RESOLVE.json
+.venv/bin/python src/cue-workbook/code_mode_client.py \
+  --endpoint http://127.0.0.1:2718/mcp/server \
+  --repository-root . \
+  --run-binding .codex/code-mode/run-bindings/RUN.json \
+  resolve-session .codex/code-mode/requests/RESOLVE.json
 ```
 
 Retain the issued `bootstrap_client.generated.models.SessionBinding` JSON unchanged. Later invocations receive it explicitly and may not substitute a session ordinal, recent session, or agent-selected session ID.
@@ -40,31 +51,34 @@ Retain the issued `bootstrap_client.generated.models.SessionBinding` JSON unchan
 Capture a bounded state projection:
 
 ```bash
-uv run --project . --locked --exact -- \
-  python src/cue-workbook/code_mode_client.py \
-  --run-binding RUN.json \
-  --session-binding SESSION.json \
-  capture-state CAPTURE.json
+.venv/bin/python src/cue-workbook/code_mode_client.py \
+  --endpoint http://127.0.0.1:2718/mcp/server \
+  --repository-root . \
+  --run-binding .codex/code-mode/run-bindings/RUN.json \
+  --session-binding .codex/code-mode/session-bindings/SESSION.json \
+  capture-state .codex/code-mode/requests/CAPTURE.json
 ```
 
 Run one focused probe from the approved `variable-repr` or `cell-source` template. The request must declare exactly one subject and its expected observation shape:
 
 ```bash
-uv run --project . --locked --exact -- \
-  python src/cue-workbook/code_mode_client.py \
-  --run-binding RUN.json \
-  --session-binding SESSION.json \
-  run-focused-probe PROBE.json
+.venv/bin/python src/cue-workbook/code_mode_client.py \
+  --endpoint http://127.0.0.1:2718/mcp/server \
+  --repository-root . \
+  --run-binding .codex/code-mode/run-bindings/RUN.json \
+  --session-binding .codex/code-mode/session-bindings/SESSION.json \
+  run-focused-probe .codex/code-mode/requests/PROBE.json
 ```
 
 Apply one replacement-based cell transaction only in `implement`. Copy each `expectedPreimageDigest` and the `expectedWorkbookRevision` from a fresh capture; declare every target cell and replacement source digest:
 
 ```bash
-uv run --project . --locked --exact -- \
-  python src/cue-workbook/code_mode_client.py \
-  --run-binding RUN.json \
-  --session-binding SESSION.json \
-  apply-cell-transaction TRANSACTION.json
+.venv/bin/python src/cue-workbook/code_mode_client.py \
+  --endpoint http://127.0.0.1:2718/mcp/server \
+  --repository-root . \
+  --run-binding .codex/code-mode/run-bindings/RUN.json \
+  --session-binding .codex/code-mode/session-bindings/SESSION.json \
+  apply-cell-transaction .codex/code-mode/requests/TRANSACTION.json
 ```
 
 The closed operation union is `resolve-session`, `capture-state`, `run-focused-probe`, and `apply-cell-transaction`. There is no raw `execute_code`, arbitrary Python, create/delete/move instruction, or agent-authored MCP request surface.

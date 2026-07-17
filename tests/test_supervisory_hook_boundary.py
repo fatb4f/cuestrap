@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -8,12 +9,21 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
+import code_mode_client  # noqa: E402
+from bootstrap_client.admission import CodeModeAdmissionContract  # noqa: E402
+from bootstrap_client.binding import (  # noqa: E402
+    digest_file,
+    local_client_identity,
+    local_skill_identity,
+)
+from bootstrap_client.generated.models import digest_json, digest_text  # noqa: E402
+from bootstrap_client.mcp_adapter import AdapterResult  # noqa: E402
 from supervisory_hooks.cli import main as hook_cli_main  # noqa: E402
 from supervisory_hooks.controller import execute_controller_request  # noqa: E402
 from supervisory_hooks.ledger import DurableLedger  # noqa: E402
@@ -31,23 +41,7 @@ from supervisory_hooks.supervisor import Supervisor  # noqa: E402
 DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
 CODE_MODE_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
-
-
-def _code_mode_argv(operation: str = "capture-state") -> tuple[str, ...]:
-    argv = [
-        ".venv/bin/python",
-        "src/cue-workbook/code_mode_client.py",
-        "--endpoint",
-        CODE_MODE_ENDPOINT,
-        "--repository-root",
-        str(ROOT),
-        "--run-binding",
-        "tests/fixtures/code-mode/run.json",
-    ]
-    if operation != "resolve-session":
-        argv.extend(["--session-binding", "tests/fixtures/code-mode/session.json"])
-    argv.extend((operation, f"tests/fixtures/code-mode/{operation}.json"))
-    return tuple(argv)
+WORKBOOK = WORKBOOK_ROOT / "cue-workbook.py"
 
 
 def _pre(
@@ -104,9 +98,114 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.data_dir = Path(self.temporary.name)
         self.ledger = DurableLedger(self.data_dir / "ledger")
         self.supervisor = Supervisor(ROOT, self.ledger)
+        self.admission = CodeModeAdmissionContract.for_repository(ROOT)
+        self.artifact_temporaries = [
+            tempfile.TemporaryDirectory(dir=root)
+            for root in (
+                self.admission.admitted_run_binding_root,
+                self.admission.admitted_session_binding_root,
+                self.admission.admitted_request_root,
+            )
+        ]
+        run_root, session_root, request_root = (
+            Path(item.name) for item in self.artifact_temporaries
+        )
+        self.run_binding = run_root / "run.json"
+        self.session_binding = session_root / "session.json"
+        self.requests = {
+            "resolve-session": request_root / "resolve-session.json",
+            "capture-state": request_root / "capture-state.json",
+        }
+        self.wrong_run_binding = session_root / "run.json"
+        self.wrong_session_binding = request_root / "session.json"
+        self.wrong_request = run_root / "capture-state.json"
+        self._write_code_mode_documents()
 
     def tearDown(self) -> None:
+        for temporary in reversed(self.artifact_temporaries):
+            temporary.cleanup()
         self.temporary.cleanup()
+
+    @staticmethod
+    def _write_json(path: Path, value: object) -> None:
+        path.write_text(json.dumps(value), encoding="utf-8")
+
+    def _write_code_mode_documents(self) -> None:
+        run = {
+            "runID": "run-1",
+            "attemptID": "attempt-1",
+            "phase": "inspect",
+            "controller": {
+                "sourcePath": str(WORKBOOK),
+                "sourceDigest": digest_file(WORKBOOK),
+            },
+            "target": {
+                "repositoryDigest": digest_text("fixture"),
+                "workbookPath": str(WORKBOOK),
+                "workbookDigest": digest_file(WORKBOOK),
+            },
+            "client": local_client_identity(ROOT).model_dump(
+                by_alias=True, mode="json"
+            ),
+            "skill": local_skill_identity(ROOT).model_dump(
+                by_alias=True, mode="json"
+            ),
+            "marimo": {
+                "engineIdentity": digest_text("marimo"),
+                "engineRevision": digest_text("test"),
+            },
+            "authority": {
+                "cueSourceDigest": digest_file(
+                    WORKBOOK_ROOT / "bootstrap_client/contracts.cue"
+                ),
+                "cueEvaluatorDigest": digest_text("fixture"),
+            },
+        }
+        metadata = {
+            "name": WORKBOOK.name,
+            "path": str(WORKBOOK),
+            "session_id": "session-1",
+        }
+        session = {
+            "sessionID": "session-1",
+            "workbookPath": str(WORKBOOK),
+            "sessionMetadataDigest": digest_json(metadata),
+            "resolvedAtSequence": 0,
+        }
+        resolve = {
+            "kind": "resolve-session",
+            "operationID": "resolve-1",
+            "workbookPath": str(WORKBOOK),
+        }
+        capture = {"kind": "capture-state", "operationID": "capture-1"}
+        for path, value in (
+            (self.run_binding, run),
+            (self.wrong_run_binding, run),
+            (self.session_binding, session),
+            (self.wrong_session_binding, session),
+            (self.requests["resolve-session"], resolve),
+            (self.requests["capture-state"], capture),
+            (self.wrong_request, capture),
+        ):
+            self._write_json(path, value)
+
+    def _code_mode_argv(self, operation: str = "capture-state") -> tuple[str, ...]:
+        argv = [
+            ".venv/bin/python",
+            "src/cue-workbook/code_mode_client.py",
+            "--endpoint",
+            CODE_MODE_ENDPOINT,
+            "--repository-root",
+            str(ROOT),
+            "--run-binding",
+            str(self.run_binding.relative_to(ROOT)),
+        ]
+        if operation != "resolve-session":
+            argv.extend(
+                ["--session-binding", str(self.session_binding.relative_to(ROOT))]
+            )
+        argv.extend((operation, str(self.requests[operation].relative_to(ROOT))))
+        return tuple(argv)
 
     def test_general_bash_is_rewritten_to_disposable_controller_workbook(self) -> None:
         response = _run_wire(_pre(), self.data_dir / "wire")
@@ -143,7 +242,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertEqual(request.tool_input, event.tool_input)
 
     def test_workbook_bash_action_remains_direct(self) -> None:
-        event = _pre(tool_input={"command": shlex.join(_code_mode_argv())})
+        event = _pre(tool_input={"command": shlex.join(self._code_mode_argv())})
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
         self.assertEqual(_run_wire(event, self.data_dir / "workbook"), {})
@@ -151,7 +250,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
     def test_workbook_tool_exec_action_remains_direct(self) -> None:
         event = _pre(
             "tool_exec",
-            {"argv": list(_code_mode_argv("resolve-session"))},
+            {"argv": list(self._code_mode_argv("resolve-session"))},
         )
         route = plan_pretool_route(event, ROOT)
         self.assertEqual((route.category, route.behavior), ("workbook-centric", "direct"))
@@ -172,7 +271,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             "--exact",
             "--",
             "python",
-            *_code_mode_argv()[1:],
+            *self._code_mode_argv()[1:],
         )
         with patch.dict(os.environ, {"PATH": f"{shadow}:{os.environ['PATH']}"}):
             for command in (shlex.join(uv_argv), "just marimo-listener"):
@@ -237,7 +336,7 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                 )
 
     def test_code_mode_requires_closed_canonical_coordinates(self) -> None:
-        canonical = _code_mode_argv()
+        canonical = self._code_mode_argv()
 
         def replaced(option: str, value: str) -> tuple[str, ...]:
             argv = list(canonical)
@@ -250,6 +349,9 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             replaced("--run-binding", "/tmp/run.json"),
             replaced("--session-binding", "/tmp/session.json"),
             (*canonical[:-1], "/tmp/request.json"),
+            replaced("--run-binding", str(self.wrong_run_binding)),
+            replaced("--session-binding", str(self.wrong_session_binding)),
+            (*canonical[:-1], str(self.wrong_request)),
             (*canonical, "--unknown", "value"),
             (*canonical, "run-focused-probe", "tests/fixtures/code-mode/probe.json"),
             tuple(
@@ -263,10 +365,10 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
             ),
             canonical[:-1],
             (
-                *_code_mode_argv("resolve-session")[:-2],
+                *self._code_mode_argv("resolve-session")[:-2],
                 "--session-binding",
-                "tests/fixtures/code-mode/session.json",
-                *_code_mode_argv("resolve-session")[-2:],
+                str(self.session_binding),
+                *self._code_mode_argv("resolve-session")[-2:],
             ),
         )
         for argv in rejected:
@@ -278,6 +380,55 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
                     (route.category, route.behavior),
                     ("unclassified", "neutral"),
                 )
+
+    def test_canonical_code_mode_invocation_parses_loads_and_calls_mock_adapter(self) -> None:
+        argv = self._code_mode_argv("resolve-session")
+        args = code_mode_client._parser().parse_args(argv[2:])
+        adapter_result = AdapterResult(
+            transport_state="returned",
+            execution_state="exited",
+            payload={
+                "sessions": [
+                    {
+                        "name": WORKBOOK.name,
+                        "path": str(WORKBOOK),
+                        "session_id": "session-1",
+                    }
+                ]
+            },
+        )
+        with patch.object(code_mode_client, "MCPAdapter") as adapter_type:
+            adapter_type.return_value.list_sessions = AsyncMock(
+                return_value=adapter_result
+            )
+            code, value = asyncio.run(code_mode_client._main_async(args))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(value["sessionID"], "session-1")
+        adapter_type.assert_called_once_with(CODE_MODE_ENDPOINT)
+
+    def test_cli_rejects_valid_documents_from_the_wrong_admission_roots(self) -> None:
+        canonical = self._code_mode_argv()
+
+        def replaced(option: str, value: Path) -> tuple[str, ...]:
+            argv = list(canonical)
+            argv[argv.index(option) + 1] = str(value)
+            return tuple(argv)
+
+        rejected = (
+            replaced("--run-binding", self.wrong_run_binding),
+            replaced("--session-binding", self.wrong_session_binding),
+            (*canonical[:-1], str(self.wrong_request)),
+        )
+        for argv in rejected:
+            with self.subTest(argv=argv):
+                args = code_mode_client._parser().parse_args(argv[2:])
+                with (
+                    patch.object(code_mode_client, "MCPAdapter") as adapter_type,
+                    self.assertRaisesRegex(ValueError, "immutable admission contract"),
+                ):
+                    asyncio.run(code_mode_client._main_async(args))
+                adapter_type.assert_not_called()
 
     def test_workbook_filename_mentions_do_not_bypass_controller(self) -> None:
         for command in (

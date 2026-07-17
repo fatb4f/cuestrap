@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bootstrap_client import BootstrapCodeModeClient, MCPAdapter, QuarantinedObservation
+from bootstrap_client.admission import CANONICAL_ENDPOINT, CodeModeAdmissionContract
 from bootstrap_client.generated.models import (
     ApplyCellTransaction,
     BootstrapRunBinding,
@@ -17,7 +18,8 @@ from bootstrap_client.generated.models import (
     SessionBinding,
 )
 
-DEFAULT_ENDPOINT = "http://127.0.0.1:2718/mcp/server"
+DEFAULT_ENDPOINT = CANONICAL_ENDPOINT
+CANONICAL_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _OPERATIONS = {
     "resolve-session": ResolveSession,
     "capture-state": CaptureState,
@@ -42,6 +44,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _main_async(args: argparse.Namespace) -> tuple[int, object]:
+    CodeModeAdmissionContract.for_repository(CANONICAL_REPOSITORY_ROOT).require_invocation(
+        endpoint=args.endpoint,
+        repository_root=args.repository_root,
+        run_binding=args.run_binding,
+        session_binding=args.session_binding,
+        request=args.request,
+        operation=args.operation,
+    )
     run = BootstrapRunBinding.model_validate(_load(args.run_binding))
     session = (
         SessionBinding.model_validate(_load(args.session_binding))
