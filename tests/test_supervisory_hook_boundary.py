@@ -5,6 +5,8 @@ import io
 import json
 import os
 import shlex
+import signal
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,6 +18,7 @@ WORKBOOK_ROOT = ROOT / "src/cue-workbook"
 sys.path.insert(0, str(WORKBOOK_ROOT))
 
 import code_mode_client  # noqa: E402
+import operation_controller_cli  # noqa: E402
 from operation_controller_cli import (  # noqa: E402
     ControllerCodeModeBinding,
     _execute_code as controller_execute_code,
@@ -719,8 +722,107 @@ class SupervisoryHookBoundaryTests(unittest.TestCase):
         self.assertIn("marimo", command)
         mcp_index = command.index("--mcp")
         self.assertEqual(command[mcp_index : mcp_index + 2], ["--mcp", "code-mode"])
+        self.assertIn("--no-skew-protection", command)
         self.assertEqual(document["state"], "ready")
         self.assertTrue(Path(document["bindingPath"]).is_file())
+
+    def test_disposable_controller_real_serve_inspect_close_cycle(self) -> None:
+        route = plan_pretool_route(_pre(), ROOT)
+        assert route.redirect_command is not None
+        serve_tokens = strict_shell_tokens(route.redirect_command)
+        assert serve_tokens is not None
+        state_root = self.data_dir / "real-controller-state"
+        environment = os.environ.copy()
+        environment["CUESTRAP_CONTROLLER_DATA_DIR"] = str(state_root)
+
+        served = subprocess.run(
+            serve_tokens,
+            cwd=ROOT,
+            env=environment,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+        self.assertEqual(served.returncode, 0, served.stderr or served.stdout)
+        document = json.loads(served.stdout)
+        commands = document["commands"]
+        assert isinstance(commands, dict)
+        try:
+            inspected = subprocess.run(
+                shlex.split(commands["inspect"]),
+                cwd=ROOT,
+                env=environment,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+        finally:
+            closed = subprocess.run(
+                shlex.split(commands["close"]),
+                cwd=ROOT,
+                env=environment,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+
+        self.assertEqual(document["state"], "ready")
+        self.assertEqual(
+            inspected.returncode,
+            0,
+            inspected.stderr or inspected.stdout,
+        )
+        inspection = json.loads(inspected.stdout)
+        self.assertEqual(
+            inspection["request"]["requestIdentity"],
+            document["requestIdentity"],
+        )
+        self.assertEqual(closed.returncode, 0, closed.stderr or closed.stdout)
+        self.assertEqual(json.loads(closed.stdout)["state"], "closed")
+
+    def test_degraded_controller_close_does_not_require_mcp(self) -> None:
+        route = plan_pretool_route(_pre(), ROOT)
+        request = route.request
+        assert request is not None
+        binding = ControllerCodeModeBinding(
+            requestIdentity=request.identity,
+            workbookPath=str(WORKBOOK_ROOT / "operation-controller.py"),
+            workbookDigest=digest_file(WORKBOOK_ROOT / "operation-controller.py"),
+            serverPID=123,
+            session={
+                "sessionID": "controller-session-1",
+                "workbookPath": str(WORKBOOK_ROOT / "operation-controller.py"),
+                "sessionMetadataDigest": digest_text("controller-session"),
+                "resolvedAtSequence": 0,
+            },
+        )
+        with (
+            patch("operation_controller_cli._load_binding", return_value=binding),
+            patch("operation_controller_cli.os.getpgid", return_value=123),
+            patch("operation_controller_cli.os.killpg") as killpg,
+            patch(
+                "operation_controller_cli._process_matches",
+                side_effect=[True, False],
+            ),
+            patch("operation_controller_cli._port_available", return_value=True),
+            patch(
+                "operation_controller_cli._resolve_live_session",
+                new=AsyncMock(side_effect=RuntimeError("MCP unavailable")),
+            ) as resolve,
+        ):
+            closed = asyncio.run(
+                operation_controller_cli._close(request, ROOT, self.data_dir)
+            )
+
+        self.assertEqual(closed["state"], "closed")
+        killpg.assert_called_once_with(123, signal.SIGTERM)
+        resolve.assert_not_called()
 
     def test_code_mode_templates_preserve_structured_receipts_and_read_only_diagnostics(
         self,

@@ -13,8 +13,13 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
+from websockets.asyncio.client import connect
+from websockets.exceptions import WebSocketException
 
 WORKBOOK_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(WORKBOOK_ROOT))
@@ -38,7 +43,12 @@ from supervisory_hooks.routing import decode_controller_request  # noqa: E402
 CONTROLLER_HOST = "127.0.0.1"
 CONTROLLER_PORT = 2719
 CONTROLLER_ENDPOINT = f"http://{CONTROLLER_HOST}:{CONTROLLER_PORT}/mcp/server"
+CONTROLLER_WEBSOCKET_ENDPOINT = f"ws://{CONTROLLER_HOST}:{CONTROLLER_PORT}/ws"
+CONTROLLER_INSTANTIATE_ENDPOINT = (
+    f"http://{CONTROLLER_HOST}:{CONTROLLER_PORT}/api/kernel/instantiate"
+)
 CONTROLLER_OPERATIONS = ("serve", "inspect", "execute", "diagnose", "close")
+_LOCAL_PROCESSES: dict[int, subprocess.Popen[bytes]] = {}
 
 
 class ControllerCodeModeBinding(BaseModel):
@@ -129,17 +139,53 @@ def _process_matches(pid: int, workbook: Path) -> bool:
     except OSError:
         return False
     command_line = Path(f"/proc/{pid}/cmdline")
-    if not command_line.exists():
-        return True
-    try:
-        tokens = command_line.read_bytes().split(b"\0")
-    except OSError:
-        return False
-    return str(workbook).encode() in tokens and b"marimo" in b" ".join(tokens)
+    if command_line.exists():
+        try:
+            tokens = command_line.read_bytes().split(b"\0")
+        except OSError:
+            return False
+        return str(workbook).encode() in tokens and b"marimo" in b" ".join(tokens)
+    observed = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    return (
+        observed.returncode == 0
+        and str(workbook) in observed.stdout
+        and "marimo" in observed.stdout
+    )
+
+
+def _signal_process_group(
+    pid: int,
+    workbook: Path,
+    process_signal: signal.Signals,
+) -> int | None:
+    if not _process_matches(pid, workbook):
+        return None
+    process_group = os.getpgid(pid)
+    if process_group != pid:
+        raise RuntimeError("operation-controller process group identity mismatch")
+    os.killpg(process_group, process_signal)
+    return process_group
+
+
+def _controller_stopped(pid: int, workbook: Path) -> bool:
+    local_process = _LOCAL_PROCESSES.get(pid)
+    if local_process is not None:
+        local_process.poll()
+    stopped = not _process_matches(pid, workbook) and _port_available()
+    if stopped:
+        _LOCAL_PROCESSES.pop(pid, None)
+    return stopped
 
 
 def _port_available() -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+        candidate.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             candidate.bind((CONTROLLER_HOST, CONTROLLER_PORT))
         except OSError:
@@ -165,12 +211,78 @@ async def _resolve_live_session(
     )
 
 
+def _instantiate_session(session_id: str) -> None:
+    request = Request(
+        CONTROLLER_INSTANTIATE_ENDPOINT,
+        data=json.dumps(
+            {
+                "objectIds": [],
+                "values": [],
+                "autoRun": True,
+            }
+        ).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Marimo-Session-Id": session_id,
+        },
+        method="POST",
+    )
+    with urlopen(request, timeout=2) as response:
+        result = json.load(response)
+    if result != {"success": True}:
+        raise RuntimeError(
+            f"operation-controller session instantiation failed: {result!r}"
+        )
+
+
 async def _wait_for_session(workbook: Path, repository_root: Path) -> SessionBinding:
+    query = urlencode({"session_id": f"cuestrap-controller-{uuid4()}"})
+    websocket_endpoint = f"{CONTROLLER_WEBSOCKET_ENDPOINT}?{query}"
     last_error: Exception | None = None
-    for _attempt in range(100):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10
+    while loop.time() < deadline:
         try:
-            return await _resolve_live_session(workbook, repository_root, sequence=0)
-        except (RuntimeError, ValueError, OSError) as error:
+            async with connect(
+                websocket_endpoint,
+                open_timeout=1,
+                close_timeout=1,
+            ):
+                while loop.time() < deadline:
+                    try:
+                        opened = await _resolve_live_session(
+                            workbook,
+                            repository_root,
+                            sequence=0,
+                        )
+                        await asyncio.to_thread(
+                            _instantiate_session,
+                            opened.session_id,
+                        )
+                        break
+                    except (RuntimeError, ValueError, OSError) as error:
+                        last_error = error
+                        await asyncio.sleep(0.1)
+                else:
+                    raise RuntimeError(
+                        "operation-controller websocket did not create a session"
+                    )
+            while loop.time() < deadline:
+                try:
+                    orphaned = await _resolve_live_session(
+                        workbook,
+                        repository_root,
+                        sequence=0,
+                    )
+                    if orphaned != opened:
+                        raise RuntimeError(
+                            "operation-controller session changed after websocket disconnect"
+                        )
+                    return orphaned
+                except (RuntimeError, ValueError, OSError) as error:
+                    last_error = error
+                    await asyncio.sleep(0.1)
+        except (RuntimeError, ValueError, OSError, WebSocketException) as error:
             last_error = error
             await asyncio.sleep(0.1)
     raise RuntimeError(f"operation-controller code-mode session did not start: {last_error}")
@@ -235,6 +347,7 @@ async def _serve(
         "edit",
         "--headless",
         "--no-token",
+        "--no-skew-protection",
         "--host",
         CONTROLLER_HOST,
         "--port",
@@ -256,6 +369,7 @@ async def _serve(
             stderr=stderr_log,
             start_new_session=True,
         )
+        _LOCAL_PROCESSES[process.pid] = process
     finally:
         stdout_log.close()
         stderr_log.close()
@@ -263,7 +377,14 @@ async def _serve(
     try:
         session = await _wait_for_session(workbook, repository_root)
     except Exception:
-        process.terminate()
+        _signal_process_group(process.pid, workbook, signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _signal_process_group(process.pid, workbook, signal.SIGKILL)
+            process.wait(timeout=5)
+        finally:
+            _LOCAL_PROCESSES.pop(process.pid, None)
         raise
 
     binding = ControllerCodeModeBinding(
@@ -414,10 +535,44 @@ async def _close(
     repository_root: Path,
     state_root: Path,
 ) -> dict[str, object]:
-    binding = await _checked_binding(request, repository_root, state_root)
-    os.kill(binding.server_pid, signal.SIGTERM)
+    del repository_root
+    binding = _load_binding(_binding_path(request, state_root))
+    workbook = WORKBOOK_ROOT / "operation-controller.py"
+    if binding.request_identity != request.identity:
+        raise ValueError("code-mode binding belongs to a different request")
+    if binding.workbook_path != str(workbook):
+        raise ValueError("code-mode binding workbook identity mismatch")
+    process_group = _signal_process_group(
+        binding.server_pid,
+        workbook,
+        signal.SIGTERM,
+    )
+    if process_group is None:
+        return {
+            "schema": "cuestrap.operation-controller-code-mode-close/v0",
+            "state": "closed",
+            "requestIdentity": request.identity,
+        }
     for _attempt in range(50):
-        if not _process_matches(binding.server_pid, WORKBOOK_ROOT / "operation-controller.py"):
+        if _controller_stopped(binding.server_pid, workbook):
+            return {
+                "schema": "cuestrap.operation-controller-code-mode-close/v0",
+                "state": "closed",
+                "requestIdentity": request.identity,
+            }
+        await asyncio.sleep(0.1)
+    if (
+        _signal_process_group(binding.server_pid, workbook, signal.SIGKILL)
+        is None
+    ):
+        if _controller_stopped(binding.server_pid, workbook):
+            return {
+                "schema": "cuestrap.operation-controller-code-mode-close/v0",
+                "state": "closed",
+                "requestIdentity": request.identity,
+            }
+    for _attempt in range(50):
+        if _controller_stopped(binding.server_pid, workbook):
             return {
                 "schema": "cuestrap.operation-controller-code-mode-close/v0",
                 "state": "closed",
