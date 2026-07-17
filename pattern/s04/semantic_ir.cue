@@ -1,5 +1,7 @@
 package s04
 
+import "list"
+
 // S04 v0 semantic realization intermediate representation.
 //
 // This package defines semantic contracts only. Runners and transports emit raw
@@ -55,9 +57,9 @@ package s04
 })
 
 #MaterializedSubjectIdentity: close({
-	materializationID:    #SafeID
-	realizationID:       #SafeID
-	subjectID:           #SafeID
+	materializationID:     #SafeID
+	realizationID:         #SafeID
+	subjectID:             #SafeID
 	materializationDigest: #Digest
 	files: [FileID=#SafeID]: #FileIdentity & {
 		path: #RelativePath
@@ -65,7 +67,7 @@ package s04
 })
 
 #SubjectRef: close({
-	subjectID:       #SafeID
+	subjectID:         #SafeID
 	materializationID?: #SafeID
 })
 
@@ -115,10 +117,10 @@ package s04
 })
 
 #ExpectedFact: close({
-	factID:      #SafeID
-	claimID:     #SafeID
-	authorityID: #SafeID
-	predicate:   #SafeID
+	factID:        #SafeID
+	claimID:       #SafeID
+	authorityID:   #SafeID
+	predicate:     #SafeID
 	expectedValue: #FactValue
 })
 
@@ -143,9 +145,9 @@ package s04
 })
 
 #BackendCapabilityRequirement: close({
-	capabilityID: #SafeID
+	capabilityID:  #SafeID
 	operationKinds: [#PrimitiveOperationKind, ...#PrimitiveOperationKind]
-	required: true
+	required:      true
 })
 
 #SemanticOutcome:
@@ -159,14 +161,14 @@ package s04
 })
 
 #RealizationCase: close({
-	caseID:                  #SafeID
-	groupID:                 #SafeID
-	planID:                  #SafeID
-	subjectIDs:              [#SafeID, ...#SafeID]
-	expectedFactIDs:         [#SafeID, ...#SafeID]
-	comparisonRuleIDs:       [#SafeID, ...#SafeID]
-	requiredCapabilityIDs:   [#SafeID, ...#SafeID]
-	outcomeConstraint:       #OutcomeConstraint
+	caseID:                #SafeID
+	groupID:               #SafeID
+	planID:                #SafeID
+	subjectIDs:            [#SafeID, ...#SafeID]
+	expectedFactIDs:       [#SafeID, ...#SafeID]
+	comparisonRuleIDs:     [#SafeID, ...#SafeID]
+	requiredCapabilityIDs: [#SafeID, ...#SafeID]
+	outcomeConstraint:     #OutcomeConstraint
 })
 
 #Diagnostic: close({
@@ -182,38 +184,109 @@ package s04
 	"invalid-observation"
 
 #ObservationRecord: close({
-	schema:       "s04.observation-record.v0"
-	observationID: #SafeID
-	caseID:       #SafeID
+	schema:              "s04.observation-record.v0"
+	observationID:       #SafeID
+	caseID:              #SafeID
 	observerAuthorityID: #SafeID
-	sourceRecordDigest:   #Digest
-	state:        #ObservationState
-	facts:        [FactID=#SafeID]: #ObservationFact & {factID: FactID}
-	diagnostics?: [#Diagnostic, ...#Diagnostic]
+	sourceRecordDigest:  #Digest
+	state:               #ObservationState
+	facts:               [FactID=#SafeID]: #ObservationFact & {factID: FactID}
+	diagnostics?:        [#Diagnostic, ...#Diagnostic]
 
 	if state != "facts-observed" {
-		facts: close({})
+		facts:       close({})
 		diagnostics: [#Diagnostic, ...#Diagnostic]
 	}
 })
 
 #ComparisonResult: close({
-	ruleID:  #SafeID
-	matched: bool
+	ruleID:            #SafeID
+	expectedFactID:    #SafeID
+	observationFactID: #SafeID
+	matched:           bool
 })
 
 #SemanticJudgement: close({
-	schema:       "s04.semantic-judgement.v0"
-	judgementID:  #SafeID
-	realizationID: #SafeID
-	caseID:       #SafeID
+	schema:              "s04.semantic-judgement.v0"
+	derivationRelation:  "s04.derive-semantic-judgement.v0"
+	judgementID:         #SafeID
+	realizationID:       #SafeID
+	caseID:              #SafeID
 	semanticAuthorityID: #SafeID
-	packageDigest:        #Digest
-	candidateDigest:      #Digest
-	observationDigest:    #Digest
-	comparisonResults: [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
-	outcome: #SemanticOutcome
-	diagnostics?: [#Diagnostic, ...#Diagnostic]
+	packageDigest:       #Digest
+	candidateDigest:     #Digest
+	observationDigest:   #Digest
+	comparisonResults:   [RuleID=#SafeID]: #ComparisonResult & {ruleID: RuleID}
+	outcome:             #SemanticOutcome
+	diagnostics?:        [#Diagnostic, ...#Diagnostic]
+})
+
+// #JudgementIngress is the only caller-supplied judgement request. It contains
+// no comparison booleans and no semantic outcome.
+#JudgementIngress: close({
+	requestID:           #SafeID
+	judgementID:         #SafeID
+	realizationDigest:   #Digest
+	caseID:              #SafeID
+	semanticAuthorityID: #SafeID
+	packageDigest:       #Digest
+	candidateDigest:     #Digest
+	observation:         #ObservationRecord
+	comparisonRuleIDs:   [#SafeID, ...#SafeID]
+})
+
+// #JudgementDerivation is the semantic constructor. Callers provide only
+// #JudgementIngress; CUE derives comparison results and the final outcome.
+#JudgementDerivation: close({
+	realization: #CueRealization
+	ingress:     #JudgementIngress
+
+	_case: realization.cases[ingress.caseID]
+	ingress: {
+		observation: {
+			caseID: ingress.caseID
+		}
+	}
+
+	_comparisonResults: {
+		for _, RuleID in ingress.comparisonRuleIDs {
+			"\(RuleID)": #ComparisonResult & {
+				ruleID:            RuleID
+				expectedFactID:    realization.comparisonRules[RuleID].expectedFactID
+				observationFactID: realization.comparisonRules[RuleID].observationFactID
+				if realization.comparisonRules[RuleID].operator == "equals" {
+					matched: realization.expectedFacts[expectedFactID].expectedValue == ingress.observation.facts[observationFactID].observedValue
+				}
+				if realization.comparisonRules[RuleID].operator == "not-equals" {
+					matched: realization.expectedFacts[expectedFactID].expectedValue != ingress.observation.facts[observationFactID].observedValue
+				}
+			}
+		}
+	}
+
+	_allMatched: list.And([for _, Result in _comparisonResults {Result.matched}])
+
+	judgement: #SemanticJudgement & {
+		judgementID:         ingress.judgementID
+		realizationID:       realization.realizationID
+		caseID:              ingress.caseID
+		semanticAuthorityID: ingress.semanticAuthorityID
+		packageDigest:       ingress.packageDigest
+		candidateDigest:     ingress.candidateDigest
+		observationDigest:   ingress.observation.sourceRecordDigest
+		comparisonResults:   _comparisonResults
+
+		if ingress.observation.state != "facts-observed" {
+			outcome:     "indeterminate"
+			diagnostics: ingress.observation.diagnostics
+		}
+		if ingress.observation.state == "facts-observed" && _allMatched {
+			outcome: "satisfied"
+		}
+		if ingress.observation.state == "facts-observed" && !_allMatched {
+			outcome: "rejected"
+		}
+	}
 })
 
 #CueRealization: close({
