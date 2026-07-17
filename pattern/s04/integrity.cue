@@ -1,22 +1,33 @@
 package s04
 
+import "list"
+
 // #RealizationIntegrity closes references inside one S04 realization. A value
 // satisfying #CueRealization alone is shape-valid; a value admitted through
 // this relation additionally proves that every referenced graph member exists
 // and every semantic claim is bound to semantic authority.
-#RealizationIntegrity: close({
+#RealizationIntegrity: {
 	realization: #CueRealization
 
 	let R = realization
 
+	_authorityIDs: [for ID, _ in R.authorities {ID}]
+	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
+	_subjectIDs: [for ID, _ in R.subjects {ID}]
+	_claimIDs: [for ID, _ in R.claims {ID}]
+	_expectedFactIDs: [for ID, _ in R.expectedFacts {ID}]
+	_normalizationRuleIDs: [for ID, _ in R.normalizationRules {ID}]
+	_normalizedFactIDs: [for _, Rule in R.normalizationRules {Rule.normalizedFactID}]
+	_comparisonRuleIDs: [for ID, _ in R.comparisonRules {ID}]
+	_capabilityIDs: [for ID, _ in R.capabilityRequirements {ID}]
+	_planIDs: [for ID, _ in R.plans {ID}]
+
 	_claims: {
 		for ClaimID, Claim in R.claims {
 			"\(ClaimID)": {
-				authority: R.authorities[Claim.authorityID] & {
-					role: "semantic-authority"
-				}
-				subjects: [for _, Operand in Claim.operands {
-					R.subjects[Operand.subjectID]
+				authorityExists: true & list.Contains(_semanticAuthorityIDs, Claim.authorityID)
+				subjectsExist: [for _, Operand in Claim.operands {
+					true & list.Contains(_subjectIDs, Operand.subjectID)
 				}]
 			}
 		}
@@ -25,30 +36,20 @@ package s04
 	_expectedFacts: {
 		for FactID, Fact in R.expectedFacts {
 			"\(FactID)": {
-				claim: R.claims[Fact.claimID] & {
-					authorityID: Fact.authorityID
-					predicate:   Fact.predicate
-				}
-				authority: R.authorities[Fact.authorityID] & {
-					role: "semantic-authority"
-				}
+				claimExists:     true & list.Contains(_claimIDs, Fact.claimID)
+				authorityExists: true & list.Contains(_semanticAuthorityIDs, Fact.authorityID)
+				matchingClaimCount: 1 & len([for ClaimID, Claim in R.claims if ClaimID == Fact.claimID && Claim.authorityID == Fact.authorityID && Claim.predicate == Fact.predicate {ClaimID}])
 			}
 		}
 	}
 
-	// The dynamic key makes every normalized fact ID unique. Two rules that
-	// claim the same normalized fact ID but have different rule IDs bottom.
-	_normalizedFactProducers: {
-		for RuleID, Rule in R.normalizationRules {
-			"\(Rule.normalizedFactID)": RuleID
-		}
-	}
+	_normalizedFactIDsUnique: true & list.UniqueItems(_normalizedFactIDs)
 
 	_comparisonRules: {
 		for RuleID, Rule in R.comparisonRules {
 			"\(RuleID)": {
-				expectedFact:       R.expectedFacts[Rule.expectedFactID]
-				normalizationRuleID: _normalizedFactProducers[Rule.normalizedFactID]
+				expectedFactExists:   true & list.Contains(_expectedFactIDs, Rule.expectedFactID)
+				normalizedFactExists: true & list.Contains(_normalizedFactIDs, Rule.normalizedFactID)
 			}
 		}
 	}
@@ -57,9 +58,9 @@ package s04
 		for PlanID, Plan in R.plans {
 			"\(PlanID)": {
 				operations: [for _, Operation in Plan.operations {
-					leftSubject: R.subjects[Operation.left.subjectID]
+					leftSubjectExists: true & list.Contains(_subjectIDs, Operation.left.subjectID)
 					if Operation.kind != "validate" {
-						rightSubject: R.subjects[Operation.right.subjectID]
+						rightSubjectExists: true & list.Contains(_subjectIDs, Operation.right.subjectID)
 					}
 				}]
 			}
@@ -69,29 +70,29 @@ package s04
 	_cases: {
 		for CaseID, Case in R.cases {
 			"\(CaseID)": {
-				plan: R.plans[Case.planID]
-				subjects: [for _, SubjectID in Case.subjectIDs {
-					R.subjects[SubjectID]
+				planExists: true & list.Contains(_planIDs, Case.planID)
+				subjectsExist: [for _, SubjectID in Case.subjectIDs {
+					true & list.Contains(_subjectIDs, SubjectID)
 				}]
-				expectedFacts: [for _, FactID in Case.expectedFactIDs {
-					R.expectedFacts[FactID]
+				expectedFactsExist: [for _, FactID in Case.expectedFactIDs {
+					true & list.Contains(_expectedFactIDs, FactID)
 				}]
-				normalizationRules: [for _, RuleID in Case.normalizationRuleIDs {
-					R.normalizationRules[RuleID]
+				normalizationRulesExist: [for _, RuleID in Case.normalizationRuleIDs {
+					true & list.Contains(_normalizationRuleIDs, RuleID)
 				}]
-				comparisonRules: [for _, RuleID in Case.comparisonRuleIDs {
-					R.comparisonRules[RuleID]
+				comparisonRulesExist: [for _, RuleID in Case.comparisonRuleIDs {
+					true & list.Contains(_comparisonRuleIDs, RuleID)
 				}]
-				capabilities: [for _, CapabilityID in Case.requiredCapabilityIDs {
-					R.capabilityRequirements[CapabilityID]
+				capabilitiesExist: [for _, CapabilityID in Case.requiredCapabilityIDs {
+					true & list.Contains(_capabilityIDs, CapabilityID)
 				}]
 			}
 		}
 	}
-})
+}
 
 // Raw observation facts are identity-bound to their enclosing record.
-#ObservationIntegrity: close({
+#ObservationIntegrity: {
 	observation: #ObservationRecord
 
 	let O = observation
@@ -104,4 +105,4 @@ package s04
 			}
 		}
 	}
-})
+}
