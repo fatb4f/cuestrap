@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Literal
 
 from .controller import ControllerRequest, WORKBOOK_TARGETS, semantic_tool_input
+from .execution_transport import (
+    ExecutionInvocation,
+    classify_execution_argv,
+    is_exact_workbook_argv,
+    parse_execution_input,
+    render_execution_input,
+    strict_shell_tokens,
+)
 from .models import PostToolUseInput, PreToolUseInput
 from .policy import classify_tool
 
@@ -18,8 +26,7 @@ RouteBehavior = Literal["direct", "rewrite", "redirect", "neutral"]
 
 WORKBOOK_MCP_PREFIX = "mcp__marimo_code_mode__"
 _CONTROLLER_CLI = "src/cue-workbook/operation_controller_cli.py"
-_SHELL_PUNCTUATION = frozenset(";&|<>")
-_UNEXPANDED_SHELL_MARKERS = ("`", "$(", "${", "<(", ">(")
+_EXECUTION_TOOLS = frozenset({"bash", "tool_exec"})
 
 
 @dataclass(frozen=True)
@@ -32,26 +39,6 @@ class RoutePlan:
     redirect_command: str | None = None
     reason: str | None = None
     semantic_event: PreToolUseInput | None = None
-
-
-def strict_shell_tokens(command: str) -> tuple[str, ...] | None:
-    """Return literal argv only when no shell composition or expansion is required."""
-    if not command.strip() or "\n" in command:
-        return None
-    if any(marker in command for marker in _UNEXPANDED_SHELL_MARKERS):
-        return None
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = tuple(lexer)
-    except ValueError:
-        return None
-    if not tokens or any(token and set(token) <= _SHELL_PUNCTUATION for token in tokens):
-        return None
-    if any("$" in token or token.startswith("~") for token in tokens):
-        return None
-    return tokens
 
 
 def encode_controller_request(request: ControllerRequest) -> str:
@@ -75,18 +62,20 @@ def _relative_working_directory(repository_root: Path, cwd: str) -> str | None:
     return relative.as_posix() or "."
 
 
-def _controller_command(repository_root: Path, request: ControllerRequest) -> str:
+def _controller_tokens(repository_root: Path, request: ControllerRequest) -> tuple[str, ...]:
     root = repository_root.resolve()
-    return shlex.join(
-        (
-            str(root / ".venv/bin/python"),
-            str(root / _CONTROLLER_CLI),
-            "--repository-root",
-            str(root),
-            "--payload",
-            encode_controller_request(request),
-        )
+    return (
+        str(root / ".venv/bin/python"),
+        str(root / _CONTROLLER_CLI),
+        "--repository-root",
+        str(root),
+        "--payload",
+        encode_controller_request(request),
     )
+
+
+def _controller_command(repository_root: Path, request: ControllerRequest) -> str:
+    return shlex.join(_controller_tokens(repository_root, request))
 
 
 def _request_from_controller_tokens(
@@ -109,13 +98,21 @@ def _request_from_controller_tokens(
         return None
 
 
+def _classification_for_request(request: ControllerRequest, repository_root: Path):
+    lowered = request.proposed_tool_name.casefold()
+    if lowered in _EXECUTION_TOOLS:
+        assert request.argv is not None
+        return classify_execution_argv(request.argv, repository_root=repository_root)
+    tool_name, tool_input = semantic_tool_input(request)
+    return classify_tool(tool_name, tool_input, repository_root=repository_root)
+
+
 def _semantic_pre_event(
     wire_event: PreToolUseInput,
     request: ControllerRequest,
     repository_root: Path,
 ) -> PreToolUseInput | None:
-    tool_name, tool_input = semantic_tool_input(request)
-    classification = classify_tool(tool_name, tool_input, repository_root=repository_root)
+    classification = _classification_for_request(request, repository_root)
     if not classification.recognized or classification.operation is None:
         return None
     operation = classification.operation
@@ -126,6 +123,7 @@ def _semantic_pre_event(
         cwd.relative_to(repository_root.resolve())
     except ValueError:
         return None
+    tool_name, tool_input = semantic_tool_input(request)
     return wire_event.model_copy(
         update={"tool_name": tool_name, "tool_input": tool_input, "cwd": str(cwd)}
     )
@@ -136,15 +134,10 @@ def restore_posttool_event(
     repository_root: Path,
 ) -> PostToolUseInput:
     """Restore the proposed semantic action from a controller-workbook invocation."""
-    if event.tool_name.casefold() != "bash" or not isinstance(event.tool_input, dict):
+    invocation = parse_execution_input(event.tool_name, event.tool_input)
+    if invocation is None:
         return event
-    command = event.tool_input.get("command", event.tool_input.get("cmd"))
-    if not isinstance(command, str):
-        return event
-    tokens = strict_shell_tokens(command)
-    if tokens is None:
-        return event
-    request = _request_from_controller_tokens(tokens, repository_root)
+    request = _request_from_controller_tokens(invocation.argv, repository_root)
     if request is None:
         return event
     synthetic_value = event.model_dump(mode="json", exclude={"tool_response"})
@@ -162,46 +155,62 @@ def restore_posttool_event(
     )
 
 
-def _is_workbook_action(event: PreToolUseInput, tokens: tuple[str, ...] | None) -> bool:
+def _is_workbook_action(event: PreToolUseInput, invocation: ExecutionInvocation | None) -> bool:
     lowered = event.tool_name.casefold()
     if lowered.startswith(WORKBOOK_MCP_PREFIX):
         return True
-    if lowered != "bash" or tokens is None:
-        return False
-    command = " ".join(tokens)
-    return (
-        "code_mode_client.py" in command
-        or "workbook_cli.py" in command
-        or (Path(tokens[0]).name == "just" and "marimo-listener" in tokens[1:])
-    )
+    return invocation is not None and is_exact_workbook_argv(invocation.argv)
+
+
+def _build_execution_request(
+    event: PreToolUseInput,
+    invocation: ExecutionInvocation,
+    *,
+    target_id: str,
+    request_digest: str,
+    working_directory: str,
+) -> ControllerRequest:
+    values: dict[str, object] = {
+        "operationID": event.tool_use_id,
+        "sessionID": event.session_id,
+        "turnID": event.turn_id,
+        "targetID": target_id,
+        "requestDigest": request_digest,
+        "proposedToolName": event.tool_name,
+        "workingDirectory": working_directory,
+        "argv": invocation.argv,
+    }
+    if invocation.tool == "tool_exec":
+        values["toolInput"] = event.tool_input
+    return ControllerRequest.build(**values)
 
 
 def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePlan:
     """Select target-workbook direct transport or disposable-controller transport."""
     lowered = event.tool_name.casefold()
-    tokens: tuple[str, ...] | None = None
+    invocation: ExecutionInvocation | None = None
 
-    if lowered == "bash" and isinstance(event.tool_input, dict):
-        command = event.tool_input.get("command", event.tool_input.get("cmd"))
-        if not isinstance(command, str):
-            return RoutePlan(category="unclassified", behavior="neutral")
-        tokens = strict_shell_tokens(command)
-        if tokens is None:
+    if lowered in _EXECUTION_TOOLS:
+        invocation = parse_execution_input(event.tool_name, event.tool_input)
+        if invocation is None:
             return RoutePlan(
                 category="unclassified",
                 behavior="neutral",
-                reason="compound or expansion-dependent Bash is outside the controller vocabulary",
+                reason=(
+                    "shell composition, expansion-dependent syntax, or an unsupported tool_exec "
+                    "input shape is outside the controller vocabulary"
+                ),
             )
-        if _is_workbook_action(event, tokens):
+        if _is_workbook_action(event, invocation):
             return RoutePlan(category="workbook-centric", behavior="direct")
-        request = _request_from_controller_tokens(tokens, repository_root)
+        request = _request_from_controller_tokens(invocation.argv, repository_root)
         if request is not None:
             semantic_event = _semantic_pre_event(event, request, repository_root)
             if semantic_event is None:
                 return RoutePlan(
                     category="general",
                     behavior="redirect",
-                    reason="controller payload failed semantic revalidation",
+                    reason="controller payload failed full request and semantic revalidation",
                 )
             return RoutePlan(
                 category="general",
@@ -211,14 +220,20 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
                 semantic_event=semantic_event,
             )
 
-    if _is_workbook_action(event, tokens):
+    if _is_workbook_action(event, invocation):
         return RoutePlan(category="workbook-centric", behavior="direct")
 
-    classification = classify_tool(
-        event.tool_name,
-        event.tool_input,
-        repository_root=repository_root,
-    )
+    if invocation is not None:
+        classification = classify_execution_argv(
+            invocation.argv,
+            repository_root=repository_root,
+        )
+    else:
+        classification = classify_tool(
+            event.tool_name,
+            event.tool_input,
+            repository_root=repository_root,
+        )
     if not classification.recognized or classification.operation is None:
         return RoutePlan(category="unclassified", behavior="neutral")
 
@@ -239,33 +254,27 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             reason="the proposed working directory is outside the repository",
         )
 
-    if lowered == "bash":
-        assert tokens is not None
-        request = ControllerRequest(
-            operationID=event.tool_use_id,
-            sessionID=event.session_id,
-            turnID=event.turn_id,
-            targetID=operation.target_id,
-            requestDigest=operation.request_digest,
-            proposedToolName=event.tool_name,
-            workingDirectory=working_directory,
-            argv=tokens,
+    if invocation is not None:
+        request = _build_execution_request(
+            event,
+            invocation,
+            target_id=operation.target_id,
+            request_digest=operation.request_digest,
+            working_directory=working_directory,
         )
-        command = _controller_command(repository_root, request)
-        updated = dict(event.tool_input)
-        updated["command"] = command
-        updated.pop("cmd", None)
+        controller_argv = _controller_tokens(repository_root, request)
+        updated = render_execution_input(invocation, controller_argv)
         return RoutePlan(
             category="general",
             behavior="rewrite",
             target_id=operation.target_id,
             request=request,
             updated_input=updated,
-            redirect_command=command,
+            redirect_command=shlex.join(controller_argv),
         )
 
     if event.tool_name == "apply_patch":
-        request = ControllerRequest(
+        request = ControllerRequest.build(
             operationID=event.tool_use_id,
             sessionID=event.session_id,
             turnID=event.turn_id,
@@ -283,8 +292,8 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
             request=request,
             redirect_command=command,
             reason=(
-                "Codex cannot change an apply_patch call into Bash; re-issue the exact "
-                f"controller-workbook command through Bash: {command}"
+                "Codex cannot change an apply_patch call into an execution tool; re-issue the "
+                f"exact controller-workbook command through Bash or tool_exec: {command}"
             ),
         )
 
@@ -293,8 +302,8 @@ def plan_pretool_route(event: PreToolUseInput, repository_root: Path) -> RoutePl
         behavior="redirect",
         target_id=operation.target_id,
         reason=(
-            f"general tool action {operation.target_id!r} has no controller adapter in this "
-            "slice; re-propose it through an admitted Bash action or add a typed adapter"
+            f"general tool action {operation.target_id!r} has no exact controller adapter; "
+            "the action was not executed"
         ),
     )
 
