@@ -33,7 +33,7 @@ package s04
 	pullRequest:     14
 	sourceSetDigest: #Digest
 
-	sourceFiles:        [FileID=#SafeID]: #SliceSourceFile
+	sourceFiles: [FileID=#SafeID]: #SliceSourceFile
 	exportedDefinitions: [#NonEmptyString, ...#NonEmptyString]
 
 	consumes:     ["issue-12-requirements"]
