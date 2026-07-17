@@ -61,7 +61,7 @@ jobs:
 
           root = pathlib.Path(sys.argv[1])
           manifest = json.loads(
-            (root / "share" / "cuestrap" / "manifest.json").read_text()
+              (root / "share" / "cuestrap" / "manifest.json").read_text()
           )
           for entry in manifest["files"]:
               payload = (root / entry["path"]).read_bytes()
