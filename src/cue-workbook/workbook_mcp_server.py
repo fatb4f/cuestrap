@@ -20,6 +20,7 @@ from bootstrap_client.generated.models import (
     RunFocusedProbe,
     SessionBinding,
 )
+from s04_package import ExecuteRealizationInput, execute_s04_package
 from supervisory_hooks.controller import ControllerRequest
 from workbook_adapter import (
     DEFAULT_CODE_MODE_ENDPOINT,
@@ -27,7 +28,7 @@ from workbook_adapter import (
     WorkbookAdapterService,
 )
 
-MCP_SERVER_VERSION = "0.2.0"
+MCP_SERVER_VERSION = "0.3.0"
 
 
 class _ToolInput(BaseModel):
@@ -69,6 +70,7 @@ class WorkbookMcpServer:
         bootstrap = BootstrapToolInput.model_json_schema(by_alias=True)
         controller = BoundOperationInput.model_json_schema(by_alias=True)
         bind_controller = BindOperationInput.model_json_schema(by_alias=True)
+        realization = ExecuteRealizationInput.model_json_schema(by_alias=True)
         return [
             {
                 "name": "resolve_session",
@@ -89,6 +91,11 @@ class WorkbookMcpServer:
                 "name": "apply_transaction",
                 "description": "Apply one preimage-bound live-cell transaction.",
                 "inputSchema": bootstrap,
+            },
+            {
+                "name": "execute_realization",
+                "description": "Execute one S04 problem package and return its CUE-derived independent judgement.",
+                "inputSchema": realization,
             },
             {
                 "name": "bind_operation",
@@ -158,6 +165,9 @@ class WorkbookMcpServer:
     async def call(self, name: str, arguments: Mapping[str, Any]) -> dict[str, object]:
         if name in {"resolve_session", "capture_state", "run_probe", "apply_transaction"}:
             return await self._bootstrap_call(name, arguments)
+        if name == "execute_realization":
+            parsed_realization = ExecuteRealizationInput.model_validate(arguments)
+            return execute_s04_package(self.repository_root, parsed_realization.package_path)
 
         if name == "bind_operation":
             parsed_bind = BindOperationInput.model_validate(arguments)
@@ -205,7 +215,8 @@ class WorkbookMcpServer:
                     },
                     "instructions": (
                         "Typed CUEstrap workbook operations over exact Marimo code-mode "
-                        "session bindings. Results are raw observations, not semantic verdicts."
+                        "session bindings. Transport tools return raw observations; "
+                        "execute_realization returns only the independent CUE judge output."
                     ),
                 },
             }
