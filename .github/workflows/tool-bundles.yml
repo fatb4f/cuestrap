@@ -44,7 +44,6 @@ jobs:
         run: |
           (cd dist/release && sha256sum --check --strict SHA256SUMS)
           bash dist/release/install.sh \
-            --source-dir dist/release \
             --prefix "$RUNNER_TEMP/cuestrap"
           "$RUNNER_TEMP/cuestrap/bin/python3" --version
           "$RUNNER_TEMP/cuestrap/bin/go" version

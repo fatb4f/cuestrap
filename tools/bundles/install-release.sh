@@ -5,13 +5,21 @@ archive_name=cuestrap-tools-linux-amd64.tar.zst
 prefix=${CUESTRAP_PREFIX:-"${HOME}/.local/cuestrap"}
 base_url=${CUESTRAP_RELEASE_URL:-https://github.com/fatb4f/cuestrap/releases/latest/download}
 source_dir=
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+
+# Prefer release assets uploaded or pre-staged beside this script. This keeps
+# restricted-sandbox installation entirely offline.
+if [[ -f "$script_dir/$archive_name" && -f "$script_dir/SHA256SUMS" ]]; then
+	source_dir=$script_dir
+fi
 
 usage() {
 	cat <<'EOF'
 Usage: install.sh [--prefix DIR] [--base-url URL | --source-dir DIR]
 
-Downloads (or reads from DIR), verifies, and installs the combined Linux AMD64
-CUEstrap tool bundle. CUESTRAP_PREFIX and CUESTRAP_RELEASE_URL provide defaults.
+Downloads (or reads from DIR), verifies, and installs the precompiled combined
+Linux AMD64 CUEstrap tool bundle. Assets beside this script are used
+automatically without network access.
 EOF
 }
 
@@ -25,6 +33,7 @@ while (($#)); do
 		--base-url)
 			[[ $# -ge 2 ]] || { echo "--base-url requires a value" >&2; exit 2; }
 			base_url=${2%/}
+			source_dir=
 			shift 2
 			;;
 		--source-dir)

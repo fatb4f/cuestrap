@@ -52,8 +52,17 @@ For blocked-egress or controlled environments, download or pre-stage the
 release assets and install without network access:
 
 ```bash
-bash install.sh --source-dir /path/to/release-assets
+# Upload into the same sandbox directory:
+#   install.sh
+#   SHA256SUMS
+#   cuestrap-tools-linux-amd64.tar.zst
+bash install.sh
 ```
+
+`--source-dir /path/to/release-assets` is also supported when the files are not
+beside the installer. This path performs no compilation, package resolution,
+or network access. Python, Go, CUE, gopls, and gopy are already compiled in the
+combined archive by the network-enabled GitHub Actions job.
 
 The canonical lock digest is SHA-256 over the sorted, compact JSON export of
 the CUE lock. Releases use `cuestrap-tools-<lock-digest>` as their tag.
