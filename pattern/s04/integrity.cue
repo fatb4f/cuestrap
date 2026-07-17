@@ -11,16 +11,16 @@ import "list"
 
 	let R = realization
 
-	_authorityIDs: [for ID, _ in R.authorities {ID}]
+	_authorityIDs:         [for ID, _ in R.authorities {ID}]
 	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
-	_subjectIDs: [for ID, _ in R.subjects {ID}]
-	_claimIDs: [for ID, _ in R.claims {ID}]
-	_expectedFactIDs: [for ID, _ in R.expectedFacts {ID}]
+	_subjectIDs:           [for ID, _ in R.subjects {ID}]
+	_claimIDs:             [for ID, _ in R.claims {ID}]
+	_expectedFactIDs:      [for ID, _ in R.expectedFacts {ID}]
 	_normalizationRuleIDs: [for ID, _ in R.normalizationRules {ID}]
-	_normalizedFactIDs: [for _, Rule in R.normalizationRules {Rule.normalizedFactID}]
-	_comparisonRuleIDs: [for ID, _ in R.comparisonRules {ID}]
-	_capabilityIDs: [for ID, _ in R.capabilityRequirements {ID}]
-	_planIDs: [for ID, _ in R.plans {ID}]
+	_normalizedFactIDs:    [for _, Rule in R.normalizationRules {Rule.normalizedFactID}]
+	_comparisonRuleIDs:    [for ID, _ in R.comparisonRules {ID}]
+	_capabilityIDs:        [for ID, _ in R.capabilityRequirements {ID}]
+	_planIDs:              [for ID, _ in R.plans {ID}]
 
 	_claims: {
 		for ClaimID, Claim in R.claims {
@@ -36,8 +36,8 @@ import "list"
 	_expectedFacts: {
 		for FactID, Fact in R.expectedFacts {
 			"\(FactID)": {
-				claimExists:     true & list.Contains(_claimIDs, Fact.claimID)
-				authorityExists: true & list.Contains(_semanticAuthorityIDs, Fact.authorityID)
+				claimExists:        true & list.Contains(_claimIDs, Fact.claimID)
+				authorityExists:    true & list.Contains(_semanticAuthorityIDs, Fact.authorityID)
 				matchingClaimCount: 1 & len([for ClaimID, Claim in R.claims if ClaimID == Fact.claimID && Claim.authorityID == Fact.authorityID && Claim.predicate == Fact.predicate {ClaimID}])
 			}
 		}
