@@ -6,7 +6,8 @@ inherit = "all"
 exclude = ["PYTHONHOME"]
 
 [features]
-shell_tool = false
+unified_exec = true
+shell_tool = true
 
 [[hooks.PreToolUse]]
 matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*|mcp__workbook__.*)$"

@@ -1,0 +1,126 @@
+name: tool bundles
+
+on:
+  push:
+    tags:
+      - "cuestrap-tools-*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Create the digest-addressed GitHub Release
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      lock-digest: ${{ steps.bundle.outputs.lock-digest }}
+      release-tag: ${{ steps.bundle.outputs.release-tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Bootstrap the CUE lock reader
+        run: go install cuelang.org/go/cmd/cue@v0.18.0
+
+      - name: Build pinned tool archives
+        id: bundle
+        run: |
+          set -o pipefail
+          bash tools/bundles/build-linux-amd64.sh dist/release | tee build-output.txt
+          sed -n '/^lock-digest=/p; /^release-tag=/p' build-output.txt >> "$GITHUB_OUTPUT"
+
+      - name: Verify release metadata and archive round trip
+        run: |
+          (cd dist/release && sha256sum --check --strict SHA256SUMS)
+          bash dist/release/install.sh \
+            --source-dir dist/release \
+            --prefix "$RUNNER_TEMP/cuestrap"
+          "$RUNNER_TEMP/cuestrap/bin/python3" --version
+          "$RUNNER_TEMP/cuestrap/bin/go" version
+          "$RUNNER_TEMP/cuestrap/bin/cue" version
+          "$RUNNER_TEMP/cuestrap/bin/gopls" version
+          "$RUNNER_TEMP/cuestrap/bin/gopy" -h
+          mkdir -p "$RUNNER_TEMP/round-trip"
+          tar --zstd -xf dist/release/cuestrap-tools-linux-amd64.tar.zst \
+            -C "$RUNNER_TEMP/round-trip"
+          python3 - "$RUNNER_TEMP/round-trip" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          manifest = json.loads(
+              (root / "share" / "cuestrap" / "manifest.json").read_text()
+          )
+          for entry in manifest["files"]:
+              payload = (root / entry["path"]).read_bytes()
+              assert len(payload) == entry["size"], entry["path"]
+              assert hashlib.sha256(payload).hexdigest() == entry["sha256"], entry["path"]
+          PY
+
+      - name: Attest the primary distribution archive
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/release/cuestrap-tools-linux-amd64.tar.zst
+
+      - name: Upload temporary qualification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuestrap-tools-${{ steps.bundle.outputs.lock-digest }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate or create the canonical release tag
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            [[ "$GITHUB_REF_NAME" == "$RELEASE_TAG" ]] || {
+              echo "tag $GITHUB_REF_NAME does not match canonical $RELEASE_TAG" >&2
+              exit 1
+            }
+          else
+            git tag "$RELEASE_TAG" "$GITHUB_SHA"
+            git push origin "$RELEASE_TAG"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cuestrap-tools-${{ needs.build.outputs.lock-digest }}
+          path: dist/release
+
+      - name: Publish durable release assets
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            dist/release/cuestrap-tools-linux-amd64.tar.zst \
+            dist/release/manifest.json \
+            dist/release/SHA256SUMS \
+            dist/release/install.sh
