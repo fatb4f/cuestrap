@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .execution_transport import classify_execution_argv, parse_execution_input
 from .models import Digest, NonEmpty, TargetID, digest_json, digest_text
 from .policy import classify_tool, repository_state_digest
 
@@ -41,11 +42,18 @@ class ControllerRequest(BaseModel):
     turn_id: NonEmpty = Field(alias="turnID")
     target_id: TargetID = Field(alias="targetID")
     request_digest: Digest = Field(alias="requestDigest")
+    request_identity: Digest = Field(alias="requestIdentity")
     proposed_tool_name: NonEmpty = Field(alias="proposedToolName")
     working_directory: str = Field(alias="workingDirectory")
     timeout_seconds: int = Field(default=120, alias="timeoutSeconds", ge=1, le=600)
     argv: tuple[NonEmpty, ...] | None = None
     tool_input: object | None = Field(default=None, alias="toolInput")
+
+    @classmethod
+    def build(cls, **values: object) -> "ControllerRequest":
+        document = {"schema": CONTROLLER_SCHEMA, **values}
+        document["requestIdentity"] = digest_json(document)
+        return cls.model_validate(document)
 
     @model_validator(mode="after")
     def validate_shape(self) -> "ControllerRequest":
@@ -56,6 +64,12 @@ class ControllerRequest(BaseModel):
         if lowered == "bash":
             if not self.argv or self.tool_input is not None:
                 raise ValueError("Bash controller requests require argv only")
+        elif lowered == "tool_exec":
+            if not self.argv or not isinstance(self.tool_input, dict):
+                raise ValueError("tool_exec controller requests require argv and toolInput")
+            parsed = parse_execution_input(self.proposed_tool_name, self.tool_input)
+            if parsed is None or parsed.argv != self.argv:
+                raise ValueError("tool_exec argv does not match toolInput")
         elif self.proposed_tool_name == "apply_patch":
             if self.argv is not None or not isinstance(self.tool_input, dict):
                 raise ValueError("apply_patch controller requests require toolInput only")
@@ -63,11 +77,20 @@ class ControllerRequest(BaseModel):
                 raise ValueError("apply_patch toolInput requires command")
         else:
             raise ValueError("unsupported controller tool")
+
+        identity_subject = self.model_dump(
+            by_alias=True,
+            mode="json",
+            exclude={"request_identity"},
+            exclude_none=True,
+        )
+        if self.request_identity != digest_json(identity_subject):
+            raise ValueError("controller request identity mismatch")
         return self
 
     @property
     def identity(self) -> Digest:
-        return digest_json(self.model_dump(by_alias=True, mode="json", exclude_none=True))
+        return self.request_identity
 
 
 class ControllerReceipt(BaseModel):
@@ -98,17 +121,26 @@ class ControllerReceipt(BaseModel):
 
 
 def semantic_tool_input(request: ControllerRequest) -> tuple[str, object]:
-    if request.proposed_tool_name.casefold() == "bash":
+    lowered = request.proposed_tool_name.casefold()
+    if lowered == "bash":
         assert request.argv is not None
         import shlex
 
         return "Bash", {"command": shlex.join(request.argv)}
+    if lowered == "tool_exec":
+        assert isinstance(request.tool_input, dict)
+        return request.proposed_tool_name, request.tool_input
     return request.proposed_tool_name, request.tool_input
 
 
 def validate_controller_request(request: ControllerRequest, repository_root: Path) -> None:
-    tool_name, tool_input = semantic_tool_input(request)
-    classification = classify_tool(tool_name, tool_input, repository_root=repository_root)
+    lowered = request.proposed_tool_name.casefold()
+    if lowered in {"bash", "tool_exec"}:
+        assert request.argv is not None
+        classification = classify_execution_argv(request.argv, repository_root=repository_root)
+    else:
+        tool_name, tool_input = semantic_tool_input(request)
+        classification = classify_tool(tool_name, tool_input, repository_root=repository_root)
     if not classification.recognized or classification.operation is None:
         raise ValueError("controller request no longer matches the closed operation vocabulary")
     operation = classification.operation
@@ -241,7 +273,7 @@ def _run_apply_patch(request: ControllerRequest, cwd: Path) -> tuple[int, str, s
 
 
 def _run_effect(request: ControllerRequest, cwd: Path) -> tuple[int, str, str, str]:
-    if request.proposed_tool_name.casefold() == "bash":
+    if request.proposed_tool_name.casefold() in {"bash", "tool_exec"}:
         return _run_argv(request, cwd)
     return _run_apply_patch(request, cwd)
 
@@ -269,7 +301,6 @@ def execute_controller_request(
         return _read_receipt(receipt_path, request)
 
     request_document = request.model_dump(by_alias=True, mode="json", exclude_none=True)
-    request_document["requestIdentity"] = request.identity
     if request_path.exists():
         current = json.loads(request_path.read_text(encoding="utf-8"))
         if current != request_document:
