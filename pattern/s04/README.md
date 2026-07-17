@@ -25,21 +25,27 @@ outcome.
 
 ## Files
 
-- `semantic_ir.cue` defines the closed backend-neutral S04 v0 vocabulary.
-- `ppf_profile.cue` defines the minimal Kattis-shaped package profile and the
-  identity-bound projection from an S04 realization to a package.
+- `semantic_ir.cue` defines the closed backend-neutral S04 v0 vocabulary and
+  CUE-owned normalization/judgement relation.
+- `integrity.cue` proves graph references and authority roles.
+- `operation_constraints.cue` closes operation-kind-specific negative fields.
+- `ppf_profile.cue` defines the minimal Kattis-shaped package profile.
+- `projection_relation.cue` derives the total identity-bound projection.
+- `slice_output.cue` publishes the exact contract-bundle handoff.
+- `VALIDATION.md` records the pinned CUE qualification protocol.
 
 No LT-01 package instance or candidate fixture is included in this slice.
 
 ## Contract handoff
 
-The next slice consumes one value satisfying:
+The next slice consumes the concrete `sliceOutput` artifact and instantiates a
+value satisfying:
 
 ```cue
-#S04ConsumerProfileContract
+#QualifiedS04ConsumerProfileContract
 ```
 
-and supplies the concrete LT-01 family:
+It then supplies the concrete LT-01 family:
 
 ```text
 directional success
@@ -47,8 +53,8 @@ reverse-direction rejection
 adversarial structural case
 ```
 
-The concrete slice must preserve the contract identities and may not add
-backend-specific semantic fields to the S04 IR.
+The concrete slice must preserve the source-set identity recorded by
+`sliceOutput` and may not add backend-specific semantic fields to the S04 IR.
 
 ## PPF source profile
 
@@ -80,3 +86,5 @@ From a repository environment with the pinned CUE toolchain:
 cue fmt --check pattern/s04/*.cue
 cue vet ./pattern/s04
 ```
+
+The exact build and witness protocol is recorded in `VALIDATION.md`.
