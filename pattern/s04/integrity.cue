@@ -47,7 +47,7 @@ package s04
 	_comparisonRules: {
 		for RuleID, Rule in R.comparisonRules {
 			"\(RuleID)": {
-				expectedFact: R.expectedFacts[Rule.expectedFactID]
+				expectedFact:       R.expectedFacts[Rule.expectedFactID]
 				normalizationRuleID: _normalizedFactProducers[Rule.normalizedFactID]
 			}
 		}
@@ -105,28 +105,3 @@ package s04
 		}
 	}
 })
-
-// Every judgement derivation consumes referentially closed realization and
-// observation graphs, and its selected rules are exactly the case rules.
-#JudgementDerivation: {
-	_realizationIntegrity: #RealizationIntegrity & {
-		realization: realization
-	}
-	_observationIntegrity: #ObservationIntegrity & {
-		observation: ingress.observation
-	}
-	_caseReference: realization.cases[ingress.caseID]
-	_semanticAuthorityReference: realization.authorities[ingress.semanticAuthorityID] & {
-		role: "semantic-authority"
-	}
-	_observerAuthorityReference: realization.authorities[ingress.observation.observerAuthorityID] & {
-		role: "raw-observer"
-	}
-	ingress: {
-		normalizationRuleIDs: _caseReference.normalizationRuleIDs
-		comparisonRuleIDs:    _caseReference.comparisonRuleIDs
-		observation: {
-			caseID: ingress.caseID
-		}
-	}
-}
