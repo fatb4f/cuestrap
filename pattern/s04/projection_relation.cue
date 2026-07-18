@@ -1,6 +1,9 @@
 package s04
 
-import "list"
+import (
+	"encoding/json"
+	"list"
+)
 
 #CueRealizationArtifact: close({
 	digest:      #Digest
@@ -21,9 +24,9 @@ import "list"
 	caseMap: [RealizationCaseID=#SafeID]: #SafeID
 })
 
-// #S04PPFProjectionDerivation proves that the mapping is total over the S04
-// realization, contains no foreign S04 cases, targets existing package cases,
-// and binds every projected authority to the required role.
+// The projection is constructed internally and published only when every
+// totality, membership, authority, validator, and realization-integrity proof
+// is concrete.
 #S04PPFProjectionDerivation: {
 	realizationArtifact: #CueRealizationArtifact
 	package:             #MinimalPPFPackage
@@ -63,7 +66,7 @@ import "list"
 
 	_validatorAuthorityMatches: P.validator.semanticAuthorityID & Q.semanticAuthorityID
 
-	projection: #S04PPFProjection & {
+	_derivedProjection: #S04PPFProjection & {
 		projectionID:      Q.projectionID
 		projectionDigest:  Q.projectionDigest
 		realizationID:     R.realizationID
@@ -85,22 +88,57 @@ import "list"
 			}
 		}
 	}
+
+	_concreteQualificationPayload: {
+		realizationArtifact:            realizationArtifact
+		package:                        package
+		request:                        request
+		realizationIntegrity:           _realizationIntegrity._qualificationChecks
+		semanticAuthorityExists:        _semanticAuthorityExists
+		packageDeclarerAuthorityExists: _packageDeclarerAuthorityExists
+		rawObserverAuthoritiesExist:    _rawObserverAuthoritiesExist
+		caseMapCardinalityMatches:      _caseMapCardinalityMatches
+		requestedCasesExist:            _requestedCasesExist
+		allRealizationCasesMapped:      _allRealizationCasesMapped
+		targetCasesExist:               _targetCasesExist
+		validatorAuthorityMatches:      _validatorAuthorityMatches
+		derivedProjection:              _derivedProjection
+	}
+	_concreteQualificationJSON: json.Marshal(_concreteQualificationPayload)
+
+	if _concreteQualificationJSON != "" {
+		projection: _derivedProjection
+	}
 }
 
-// This is the admitted consumer-profile contract relation. The original
-// #S04ConsumerProfileContract remains the closed data envelope; qualification
-// requires its projection to be the exact output of the derivation above.
+// A candidate contract is input. The public contract output exists only after
+// realization equality and the complete projection proof are concrete.
 #QualifiedS04ConsumerProfileContract: {
-	contract:            #S04ConsumerProfileContract
+	candidateContract:   #S04ConsumerProfileContract
 	realizationArtifact: #CueRealizationArtifact
 	projectionRequest:   #S04PPFProjectionRequest
 
-	_realizationMatches: contract.realization & realizationArtifact.realization
+	_realizationMatches: candidateContract.realization & realizationArtifact.realization
 
 	_projectionDerivation: #S04PPFProjectionDerivation & {
 		realizationArtifact: realizationArtifact
-		package:             contract.package
+		package:             candidateContract.package
 		request:             projectionRequest
-		projection:          contract.projection
+	}
+	_projectionMatches: candidateContract.projection & _projectionDerivation._derivedProjection
+
+	_concreteQualificationPayload: {
+		candidateContract:       candidateContract
+		realizationArtifact:     realizationArtifact
+		projectionRequest:       projectionRequest
+		realizationMatches:      _realizationMatches
+		projectionQualification: _projectionDerivation._concreteQualificationJSON
+		derivedProjection:       _projectionDerivation._derivedProjection
+		projectionMatches:       _projectionMatches
+	}
+	_concreteQualificationJSON: json.Marshal(_concreteQualificationPayload)
+
+	if _concreteQualificationJSON != "" {
+		contract: candidateContract
 	}
 }

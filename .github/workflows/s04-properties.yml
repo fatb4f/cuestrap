@@ -1,0 +1,42 @@
+name: s04 model properties
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  properties:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Synchronize project
+        run: uv sync --locked
+
+      - name: Build pinned CUE oracle
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" \
+            go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
+          echo "CUESTRAP_CUE=$RUNNER_TEMP/bin/cue" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/bin/cue" version
+
+      - name: Compile typed model and properties
+        run: |
+          uv run --project . --locked --exact -- \
+            python -m compileall -q src tests
+
+      - name: Run S04 property suite
+        run: |
+          uv run --project . --locked --exact -- \
+            python -m unittest -v tests.test_s04_properties
