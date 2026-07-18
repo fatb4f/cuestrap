@@ -37,6 +37,20 @@ jobs:
             python -m compileall -q src tests
 
       - name: Run S04 property suite
+        shell: bash
         run: |
+          set +e
           uv run --project . --locked --exact -- \
-            python -m unittest -v tests.test_s04_properties
+            python -m unittest -v tests.test_s04_properties \
+            2>&1 | tee "$RUNNER_TEMP/s04-properties.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Upload property transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s04-property-transcript
+          path: ${{ runner.temp }}/s04-properties.log
+          if-no-files-found: error
