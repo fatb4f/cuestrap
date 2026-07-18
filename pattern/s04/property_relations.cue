@@ -2,26 +2,14 @@ package s04
 
 import "list"
 
-// Publication must force every sibling proof that qualifies the selected
-// judgement, not only the graph-wide integrity and derived outcome payloads.
-// The aliases are required because hidden fields are lexically scoped in CUE;
-// cross-file refinements must select them through the value being refined.
-#JudgementDerivation: D={
-	_concreteQualificationPayload: {
-		semanticAuthority:       D._semanticAuthority
-		observerAuthority:       D._observerAuthority
-		caseIDMatch:             D._caseIDMatch
-		normalizationRulesMatch: D._normalizationRulesMatch
-		comparisonRulesMatch:    D._comparisonRulesMatch
-	}
-}
-
-// Case-local coherence prevents a case from borrowing semantically unrelated
-// nodes that merely happen to exist elsewhere in the realization graph.
-#RealizationIntegrity: I={
+// Case-local coherence is a first-class relation instead of a cross-file
+// extension of #RealizationIntegrity's hidden fields. Hidden field identities
+// are file-scoped in CUE and are therefore unsuitable as extension points.
+#CaseLocalIntegrity: I={
+	realization: #CueRealization
 	let R = I.realization
 
-	_caseLocalCoherence: {
+	_checks: {
 		for CaseID, Case in R.cases {
 			"\(CaseID)": {
 				_plan: R.plans[Case.planID]
@@ -70,7 +58,21 @@ import "list"
 		}
 	}
 
-	_qualificationChecks: {
-		caseLocalCoherence: I._caseLocalCoherence
+	qualificationChecks: I._checks
+}
+
+// Publication forces every sibling proof that qualifies the selected
+// judgement. Aliases are required for cross-file access to hidden fields.
+#JudgementDerivation: D={
+	_caseLocalIntegrity: #CaseLocalIntegrity & {
+		realization: D.realization
+	}
+	_concreteQualificationPayload: {
+		semanticAuthority:       D._semanticAuthority
+		observerAuthority:       D._observerAuthority
+		caseIDMatch:             D._caseIDMatch
+		normalizationRulesMatch: D._normalizationRulesMatch
+		comparisonRulesMatch:    D._comparisonRulesMatch
+		caseLocalIntegrity:      D._caseLocalIntegrity.qualificationChecks
 	}
 }
