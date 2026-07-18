@@ -1,68 +1,104 @@
 {
-  "commands": [
+  "evidence": {
+    "nativeQualification": {
+      "result": "failed-before-native-tests",
+      "runID": 29623739064,
+      "scope": "pre-existing Build pinned native artifacts step"
+    },
+    "propertyWorkflow": {
+      "artifactDigest": "sha256:1af261d74a9756e60afc8babcf92050e516bd331892ceee25b08f82414ad5e0f",
+      "artifactID": 8423106550,
+      "runID": 29623739066,
+      "transcriptDigest": "sha256:47c2c268779e55258574f8b5fced94399858c29c7aed41e6c60764bd62298e41",
+      "transcriptPath": "s04-properties.log"
+    },
+    "repositoryValidation": {
+      "jobID": 88023865155,
+      "result": "success",
+      "runID": 29623739064
+    }
+  },
+  "headCommit": "dd0ec730a8f63d9d4fba095a08cffd37abdccab1",
+  "objectModel": {
+    "cue": {
+      "relations": [
+        "#RealizationIntegrity",
+        "#CaseLocalIntegrity",
+        "#JudgementDerivation",
+        "#S04PPFProjectionDerivation",
+        "#QualifiedS04ConsumerProfileContract"
+      ],
+      "soleSemanticOracle": true
+    },
+    "hypothesis": {
+      "configuredGeneratedExamples": 96,
+      "derandomize": true,
+      "families": [
+        "valid construction",
+        "controlled mutation",
+        "case locality",
+        "publication",
+        "metamorphic invariance",
+        "shrinking"
+      ],
+      "generatedPropertyMethods": 8,
+      "maxExamplesPerProperty": 12
+    },
+    "pydantic": {
+      "closedModels": true,
+      "scope": [
+        "transport shape",
+        "discriminated unions",
+        "map-key identity",
+        "state-local envelope rules",
+        "deterministic JSON projection"
+      ],
+      "semanticAuthority": false
+    }
+  },
+  "results": [
     {
       "command": "cue fmt --check pattern/s04/*.cue",
-      "id": "format",
+      "id": "cue-format",
       "result": "passed"
     },
     {
       "command": "cue vet -c=false pattern/s04/*.cue",
-      "id": "structural-vet",
+      "id": "cue-vet",
       "result": "passed"
     },
     {
-      "command": "cue eval -c pattern/s04/*.cue -e validation.positive.judgement --out json",
-      "id": "positive",
-      "result": "satisfied"
+      "command": "python -m compileall -q src tests",
+      "id": "python-compile",
+      "result": "passed"
     },
     {
-      "command": "cue eval -c pattern/s04/*.cue -e validation.indeterminate.judgement --out json",
-      "id": "indeterminate",
-      "result": "indeterminate"
+      "command": "python -m unittest -v tests.test_s04_properties",
+      "id": "object-and-property-suite",
+      "result": "12-passed"
     },
     {
-      "count": 8,
-      "id": "structural-bottoms",
-      "result": "all-failed-as-required"
+      "id": "judgement-publication-properties",
+      "result": "passed"
     },
     {
-      "count": 4,
-      "id": "publication-blocks",
-      "result": "all-failed-as-required"
+      "id": "case-local-coherence-properties",
+      "result": "passed"
+    },
+    {
+      "id": "projection-publication-properties",
+      "result": "passed"
+    },
+    {
+      "id": "contract-publication-properties",
+      "result": "passed"
+    },
+    {
+      "id": "unrelated-extension-metamorphic-property",
+      "result": "passed"
     }
   ],
-  "evidenceFiles": {
-    "cue-version.txt": "sha256:96e93c53e18d5f7099c99d06b45480db120c91f504467d950fe62bff9149fc5a",
-    "fmt.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "indeterminate-judgement.json": "sha256:7e3af9dbf4479be40ceff0b630499c0d87ebde63d3835e7881a6811b761801c2",
-    "invalid_claim_value.stderr": "sha256:ae2336de0990804c9a4d5eca25fa4a14485a5a3c3484245c242cf6a1ae7a66ab",
-    "invalid_claim_value.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_disjunctive_materialization.stderr": "sha256:f70251d4b4ca56ee4fb81f144e7eab4f9d7e43f2c20b7466ab1fee20fcefba69",
-    "invalid_disjunctive_materialization.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_disjunctive_required_outcome.stderr": "sha256:260150d0d4ac6041917860838b61840509c34c7013c8a66821c641b04cac6423",
-    "invalid_disjunctive_required_outcome.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_incomplete_claim_value.stderr": "sha256:8879b522e83f27fc717318eb5f5c4dca92d0687a557d5a4cd633c9c4fd6c9bd0",
-    "invalid_incomplete_claim_value.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_incomplete_materialization.stderr": "sha256:ec9c6e719aece2bb7bd1be1caff36b1b66a07f8501cc02aeae8ca7392404d418",
-    "invalid_incomplete_materialization.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_materialization.stderr": "sha256:f0eef2c7f5997f5ffe5bcc5ced36eb07afedc4f8cb39aec4ef5a50d7aee5622d",
-    "invalid_materialization.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_outcome_constraint.stderr": "sha256:ebfecd8b5a2378fb62cad725a6409da91787e7ddc0731332737e88fdb69de9d9",
-    "invalid_outcome_constraint.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_projection.stderr": "sha256:ddcbf81bf516e8e5f38eaf1a6c58a1d99367631659470d842b86a25e55ff67a8",
-    "invalid_projection.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_reference.stderr": "sha256:22b545c4fec98452b7f9d9b5e4dce432aeae2b776c7f7182d295aa0e49bd3d4f",
-    "invalid_reference.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_required_not_permitted.stderr": "sha256:72bdc50b268e89359c97fdef85eea8e7459df6d41973db38474e12d2d392da23",
-    "invalid_required_not_permitted.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "invalid_unpermitted_outcome.stderr": "sha256:307e5dc53983b4fadc0db317dac53239eb489a23eb3869511df85019affc32b8",
-    "invalid_unpermitted_outcome.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "negative_validate.stderr": "sha256:5c8bc5c1b946282ca14715c9991f98a6c5ac5ed5887a9935822f5bc6da6a4385",
-    "negative_validate.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "positive-judgement.json": "sha256:b5b8904f6b3f03de6f95dce4d6248a5eed7a13ac68174d6b484c24ed66cf57bc",
-    "vet.stdout": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  },
-  "schema": "s04.qualification-receipt.v0",
+  "schema": "s04.property-qualification-receipt.v0",
   "sourceFiles": {
     "pattern/s04/integrity.cue": "0c470e3838105679f988df904745bb21b4e60b78",
     "pattern/s04/invalid_claim_value.cue.txt": "a793626eb555af517909425350d7295716476b35",
@@ -78,17 +114,37 @@
     "pattern/s04/invalid_unpermitted_outcome.cue.txt": "108620de0d613398d1846ee3186bf24ec1a7f2ae",
     "pattern/s04/negative_validate.cue.txt": "982a8740899062581e73a1e813f10467caaa6ecb",
     "pattern/s04/ppf_profile.cue": "acf7bdb450d02cd954000838ea4a9893e0a28ac8",
-    "pattern/s04/projection_relation.cue": "3aa0a00a9a950b2fc40b10894c08f35e3cb0d8e5",
+    "pattern/s04/projection_relation.cue": "3a60dcc2715271455f617a898166f60f571df06d",
+    "pattern/s04/property_relations.cue": "054f0c8d5b478231c8330662e083b0ab6b60f960",
     "pattern/s04/qualification.cue": "cf2f0d0a6da84fc95d7de3934a86cb2b6f473382",
     "pattern/s04/semantic_ir.cue": "e03806da77fc1653f07c1e5131e9459979a06c1d",
-    "pattern/s04/validation_witness.cue": "75276787f58ccdb9fecc58d4975c832e9f7123c2"
+    "pattern/s04/validation_witness.cue": "75276787f58ccdb9fecc58d4975c832e9f7123c2",
+    "src/cuestrap/__init__.py": "3ecd433e45c8326fabb2aa4da331ad26e019a6c3",
+    "src/cuestrap/s04/__init__.py": "773b6bd7a099a6909efa365ca0d8f890a0c2c3bb",
+    "src/cuestrap/s04/core.py": "cdb6903c6b5cd809b8e02dab0bdb3daaa801a3ae",
+    "src/cuestrap/s04/fixtures.py": "cf68f354e814450e4a0592cc5e90498d021df354",
+    "src/cuestrap/s04/models.py": "d2c31cf5a32cffae91fd6587818a1a6b3617ddd3",
+    "src/cuestrap/s04/oracle.py": "9030c9486649274e0230e3b942c6c60e0a422952",
+    "src/cuestrap/s04/ppf.py": "0b0152c3118c972f9e4365bb756dbfe19a5be918",
+    "src/cuestrap/s04/properties.py": "9b5379df36505987cbe60b403ac1b2ced20b206f",
+    "src/cuestrap/s04/strategies.py": "c4992889afcc779ca8addc811bdc626848d6259c",
+    "tests/test_s04_properties.py": "89f6a8d870bcec77a8d609b1dc83a9d700f65be1"
   },
-  "sourceSetDigest": "sha256:36c482ade6289f6bf8d618632a7e6ea4033bc4c39b1a5c668032c2966d68157f",
-  "toolBundle": {
-    "archive": "cuestrap-tools-linux-amd64.tar.zst",
-    "cueLanguageVersion": "v0.18.0",
-    "cueRevision": "806821e40fae070318600a264d311517e596353b",
-    "digest": "sha256:bde8864f55193a712d5e0b55e89c4e7a7fb6de11f0667dd8235f8e21373cc5e3",
-    "goVersion": "1.26.5"
+  "sourceSetDigest": "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217",
+  "toolchains": {
+    "independentCIOracle": {
+      "cueLanguageVersion": "v0.18.0",
+      "cueRevision": "806821e40fae070318600a264d311517e596353b",
+      "goVersion": "1.26.5",
+      "use": "full generated property qualification"
+    },
+    "projectSourceBundle": {
+      "archive": "cuestrap-tools-linux-amd64.tar.zst",
+      "cueLanguageVersion": "v0.18.0",
+      "cueRevision": "806821e40fae070318600a264d311517e596353b",
+      "digest": "sha256:bde8864f55193a712d5e0b55e89c4e7a7fb6de11f0667dd8235f8e21373cc5e3",
+      "goVersion": "1.26.5",
+      "use": "local design, formatting, and minimized CUE-language reproductions"
+    }
   }
 }
