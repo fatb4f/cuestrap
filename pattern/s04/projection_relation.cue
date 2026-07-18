@@ -10,35 +10,28 @@ import (
 	realization: #CueRealization
 })
 
-// Callers select exact authority and case mappings but do not supply the
-// resulting projection envelope.
 #S04PPFProjectionRequest: close({
-	projectionID:     #SafeID
-	projectionDigest: #Digest
-
+	projectionID:               #SafeID
+	projectionDigest:           #Digest
 	semanticAuthorityID:        #SafeID
 	packageDeclarerAuthorityID: #SafeID
 	rawObserverAuthorityIDs:    [#SafeID, ...#SafeID]
-
-	// Keys are S04 realization case IDs; values are package case IDs.
 	caseMap: [RealizationCaseID=#SafeID]: #SafeID
 })
 
-// The projection is constructed internally and published only when every
-// totality, membership, authority, validator, and realization-integrity proof
-// is concrete.
-#S04PPFProjectionDerivation: {
+// Projection is an internal construction. The public field exists only after
+// every totality, membership, role, validator, and realization proof is concrete.
+#S04PPFProjectionDerivation: D={
 	realizationArtifact: #CueRealizationArtifact
 	package:             #MinimalPPFPackage
 	request:             #S04PPFProjectionRequest
 
-	let R = realizationArtifact.realization
-	let P = package
-	let Q = request
+	let R = D.realizationArtifact.realization
+	let P = D.package
+	let Q = D.request
 
-	_realizationIntegrity: #RealizationIntegrity & {
-		realization: R
-	}
+	_realizationIntegrity: #RealizationIntegrity & {realization: R}
+	_caseLocalIntegrity:   #CaseLocalIntegrity & {realization: R}
 
 	_semanticAuthorityIDs:        [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
 	_packageDeclarerAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "package-declarer" {ID}]
@@ -47,30 +40,28 @@ import (
 	_requestedCaseIDs:            [for ID, _ in Q.caseMap {ID}]
 	_packageCaseIDs:              [for ID, _ in P.cases {ID}]
 
-	_semanticAuthorityExists:        true & list.Contains(_semanticAuthorityIDs, Q.semanticAuthorityID)
-	_packageDeclarerAuthorityExists: true & list.Contains(_packageDeclarerAuthorityIDs, Q.packageDeclarerAuthorityID)
+	_semanticAuthorityExists:        true & list.Contains(D._semanticAuthorityIDs, Q.semanticAuthorityID)
+	_packageDeclarerAuthorityExists: true & list.Contains(D._packageDeclarerAuthorityIDs, Q.packageDeclarerAuthorityID)
 	_rawObserverAuthoritiesExist: [for AuthorityID in Q.rawObserverAuthorityIDs {
-		true & list.Contains(_rawObserverAuthorityIDs, AuthorityID)
+		true & list.Contains(D._rawObserverAuthorityIDs, AuthorityID)
 	}]
-
 	_caseMapCardinalityMatches: len(Q.caseMap) == len(R.cases)
 	_requestedCasesExist: [for RealizationCaseID, _ in Q.caseMap {
-		true & list.Contains(_realizationCaseIDs, RealizationCaseID)
+		true & list.Contains(D._realizationCaseIDs, RealizationCaseID)
 	}]
 	_allRealizationCasesMapped: [for RealizationCaseID, _ in R.cases {
-		true & list.Contains(_requestedCaseIDs, RealizationCaseID)
+		true & list.Contains(D._requestedCaseIDs, RealizationCaseID)
 	}]
 	_targetCasesExist: [for _, PackageCaseID in Q.caseMap {
-		true & list.Contains(_packageCaseIDs, PackageCaseID)
+		true & list.Contains(D._packageCaseIDs, PackageCaseID)
 	}]
-
 	_validatorAuthorityMatches: P.validator.semanticAuthorityID & Q.semanticAuthorityID
 
 	_derivedProjection: #S04PPFProjection & {
 		projectionID:      Q.projectionID
 		projectionDigest:  Q.projectionDigest
 		realizationID:     R.realizationID
-		realizationDigest: realizationArtifact.digest
+		realizationDigest: D.realizationArtifact.digest
 		packageID:         P.packageID
 		packageDigest:     P.packageDigest
 		authorities: {
@@ -90,55 +81,55 @@ import (
 	}
 
 	_concreteQualificationPayload: {
-		realizationArtifact:            realizationArtifact
-		package:                        package
-		request:                        request
-		realizationIntegrity:           _realizationIntegrity._qualificationChecks
-		semanticAuthorityExists:        _semanticAuthorityExists
-		packageDeclarerAuthorityExists: _packageDeclarerAuthorityExists
-		rawObserverAuthoritiesExist:    _rawObserverAuthoritiesExist
-		caseMapCardinalityMatches:      _caseMapCardinalityMatches
-		requestedCasesExist:            _requestedCasesExist
-		allRealizationCasesMapped:      _allRealizationCasesMapped
-		targetCasesExist:               _targetCasesExist
-		validatorAuthorityMatches:      _validatorAuthorityMatches
-		derivedProjection:              _derivedProjection
+		realizationArtifact:            D.realizationArtifact
+		packageValue:                   D.package
+		requestValue:                   D.request
+		realizationIntegrity:           D._realizationIntegrity._qualificationChecks
+		caseLocalIntegrity:             D._caseLocalIntegrity.qualificationChecks
+		semanticAuthorityExists:        D._semanticAuthorityExists
+		packageDeclarerAuthorityExists: D._packageDeclarerAuthorityExists
+		rawObserverAuthoritiesExist:    D._rawObserverAuthoritiesExist
+		caseMapCardinalityMatches:      D._caseMapCardinalityMatches
+		requestedCasesExist:            D._requestedCasesExist
+		allRealizationCasesMapped:      D._allRealizationCasesMapped
+		targetCasesExist:               D._targetCasesExist
+		validatorAuthorityMatches:      D._validatorAuthorityMatches
+		derivedProjection:              D._derivedProjection
 	}
-	_concreteQualificationJSON: json.Marshal(_concreteQualificationPayload)
+	_concreteQualificationJSON: json.Marshal(D._concreteQualificationPayload)
 
-	if _concreteQualificationJSON != "" {
-		projection: _derivedProjection
+	if D._concreteQualificationJSON != "" {
+		projection: D._derivedProjection
 	}
 }
 
-// A candidate contract is input. The public contract output exists only after
-// realization equality and the complete projection proof are concrete.
-#QualifiedS04ConsumerProfileContract: {
+// A candidate contract is input. Publication forces realization equality and
+// the complete projection proof; no unqualified contract field is exposed.
+#QualifiedS04ConsumerProfileContract: C={
 	candidateContract:   #S04ConsumerProfileContract
 	realizationArtifact: #CueRealizationArtifact
 	projectionRequest:   #S04PPFProjectionRequest
 
-	_realizationMatches: candidateContract.realization & realizationArtifact.realization
-
+	_realizationMatches: C.candidateContract.realization & C.realizationArtifact.realization
 	_projectionDerivation: #S04PPFProjectionDerivation & {
-		realizationArtifact: realizationArtifact
-		package:             candidateContract.package
-		request:             projectionRequest
+		realizationArtifact: C.realizationArtifact
+		package:             C.candidateContract.package
+		request:             C.projectionRequest
 	}
-	_projectionMatches: candidateContract.projection & _projectionDerivation._derivedProjection
+	_projectionMatches: C.candidateContract.projection & C._projectionDerivation._derivedProjection
 
 	_concreteQualificationPayload: {
-		candidateContract:       candidateContract
-		realizationArtifact:     realizationArtifact
-		projectionRequest:       projectionRequest
-		realizationMatches:      _realizationMatches
-		projectionQualification: _projectionDerivation._concreteQualificationJSON
-		derivedProjection:       _projectionDerivation._derivedProjection
-		projectionMatches:       _projectionMatches
+		candidateContract:       C.candidateContract
+		realizationArtifact:     C.realizationArtifact
+		projectionRequest:       C.projectionRequest
+		realizationMatches:      C._realizationMatches
+		projectionQualification: C._projectionDerivation._concreteQualificationJSON
+		derivedProjection:       C._projectionDerivation._derivedProjection
+		projectionMatches:       C._projectionMatches
 	}
-	_concreteQualificationJSON: json.Marshal(_concreteQualificationPayload)
+	_concreteQualificationJSON: json.Marshal(C._concreteQualificationPayload)
 
-	if _concreteQualificationJSON != "" {
-		contract: candidateContract
+	if C._concreteQualificationJSON != "" {
+		contract: C.candidateContract
 	}
 }
