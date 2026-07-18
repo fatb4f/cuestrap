@@ -4,20 +4,22 @@ import "list"
 
 // Publication must force every sibling proof that qualifies the selected
 // judgement, not only the graph-wide integrity and derived outcome payloads.
-#JudgementDerivation: {
+// The aliases are required because hidden fields are lexically scoped in CUE;
+// cross-file refinements must select them through the value being refined.
+#JudgementDerivation: D={
 	_concreteQualificationPayload: {
-		semanticAuthority:       _semanticAuthority
-		observerAuthority:       _observerAuthority
-		caseIDMatch:             _caseIDMatch
-		normalizationRulesMatch: _normalizationRulesMatch
-		comparisonRulesMatch:    _comparisonRulesMatch
+		semanticAuthority:       D._semanticAuthority
+		observerAuthority:       D._observerAuthority
+		caseIDMatch:             D._caseIDMatch
+		normalizationRulesMatch: D._normalizationRulesMatch
+		comparisonRulesMatch:    D._comparisonRulesMatch
 	}
 }
 
 // Case-local coherence prevents a case from borrowing semantically unrelated
 // nodes that merely happen to exist elsewhere in the realization graph.
-#RealizationIntegrity: {
-	let R = realization
+#RealizationIntegrity: I={
+	let R = I.realization
 
 	_caseLocalCoherence: {
 		for CaseID, Case in R.cases {
@@ -69,6 +71,6 @@ import "list"
 	}
 
 	_qualificationChecks: {
-		caseLocalCoherence: _caseLocalCoherence
+		caseLocalCoherence: I._caseLocalCoherence
 	}
 }
