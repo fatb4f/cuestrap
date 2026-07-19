@@ -67,7 +67,8 @@ package main
 
 func main() {}
 EOF
-(cd "$go_smoke" && "$prefix/bin/go" build ./...)
+mkdir -p "$go_smoke/cache"
+(cd "$go_smoke" && GOCACHE="$go_smoke/cache" "$prefix/bin/go" build .)
 
 "$prefix/bin/python3" "$prefix/share/cuestrap/verify_bundle.py" \
 	installed "$prefix"

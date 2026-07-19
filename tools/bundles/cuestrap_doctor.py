@@ -35,12 +35,15 @@ def gopy_smoke(prefix: Path) -> tuple[bool, str]:
     with tempfile.TemporaryDirectory(prefix="cuestrap-doctor-") as temporary:
         root = Path(temporary)
         module = root / "smoke"
-        output = root / "out"
+        output = module / "out"
         module.mkdir()
         (module / "go.mod").write_text("module smoke\n\ngo 1.22.0\n")
         (module / "smoke.go").write_text(
             "package smoke\n\nfunc Add(a, b int) int { return a + b }\n"
         )
+        build_environment = os.environ.copy()
+        build_environment["GOCACHE"] = str(root / "go-build-cache")
+        build_environment["GOMODCACHE"] = str(root / "go-module-cache")
         build = run(
             [
                 str(prefix / "bin" / "gopy"),
@@ -49,19 +52,20 @@ def gopy_smoke(prefix: Path) -> tuple[bool, str]:
                 str(prefix / "bin" / "python3"),
                 "-output",
                 str(output),
-                "./smoke",
+                ".",
             ],
-            cwd=root,
+            cwd=module,
+            env=build_environment,
         )
         if build.returncode:
             return False, (build.stdout + build.stderr)[-4000:]
         environment = os.environ.copy()
-        environment["PYTHONPATH"] = str(output)
+        environment["PYTHONPATH"] = str(module)
         imported = run(
             [
                 str(prefix / "bin" / "python3"),
                 "-c",
-                "import smoke; assert smoke.Add(20, 22) == 42",
+                "from out import smoke; assert smoke.Add(20, 22) == 42",
             ],
             env=environment,
         )
@@ -99,7 +103,8 @@ def main() -> int:
     go_ok, _ = probe([str(prefix / "bin" / "go"), "version"], tools["go"]["version"])
     cue_ok, _ = probe([str(prefix / "bin" / "cue"), "version"], tools["cue"]["version"])
     gopls_ok, _ = probe(
-        [str(prefix / "bin" / "gopls"), "version"], tools["gopls"]["version"]
+        [str(prefix / "bin" / "gopls"), "version"],
+        tools["gopls"]["revision"][:12],
     )
     gofmt_result = run(
         [str(prefix / "bin" / "gofmt")], input="package smoke\n"

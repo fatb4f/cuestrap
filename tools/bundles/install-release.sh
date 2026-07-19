@@ -128,7 +128,7 @@ fi
 path_is_safe() {
 	local value=$1 depth=0 part
 	[[ -n "$value" && "$value" != /* && "$value" != *$'\n'* && \
-		"$value" != *$'\r'* && "$value" != *$'\t'* && "$value" != *' '* ]] || return 1
+		"$value" != *$'\r'* && "$value" != *$'\t'* ]] || return 1
 	IFS='/' read -r -a parts <<< "$value"
 	for part in "${parts[@]}"; do
 		case "$part" in
@@ -144,7 +144,7 @@ path_is_safe() {
 }
 
 validate_archive_paths() {
-	local archive=$1 member mode owner size date time marker target remainder joined
+	local archive=$1 member mode owner size date time description target joined
 	while IFS= read -r member; do
 		path_is_safe "$member" || {
 			echo "unsafe archive member: $member" >&2
@@ -152,10 +152,12 @@ validate_archive_paths() {
 		}
 	done < <(tar --zstd -tf "$archive")
 
-	while read -r mode owner size date time member marker target remainder; do
+	while read -r mode owner size date time description; do
 		case "$mode" in
 			l*)
-				[[ "$marker" == '->' && -z "$remainder" ]] || return 1
+				[[ "$description" == *' -> '* ]] || return 1
+				member=${description%% -> *}
+				target=${description#* -> }
 				joined="${member%/*}/$target"
 				path_is_safe "$joined" || {
 					echo "unsafe symlink target: $member -> $target" >&2
@@ -163,9 +165,11 @@ validate_archive_paths() {
 				}
 				;;
 			h*)
-				[[ "$marker" == link && "$target" == to && -n "$remainder" ]] || return 1
-				path_is_safe "$remainder" || {
-					echo "unsafe hardlink target: $member -> $remainder" >&2
+				[[ "$description" == *' link to '* ]] || return 1
+				member=${description%% link to *}
+				target=${description#* link to }
+				path_is_safe "$target" || {
+					echo "unsafe hardlink target: $member -> $target" >&2
 					return 1
 				}
 				;;

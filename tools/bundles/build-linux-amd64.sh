@@ -4,7 +4,11 @@ set -euo pipefail
 repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 output=${1:-"$repository_root/dist/bundles"}
 work=$(mktemp -d)
-trap 'rm -rf -- "$work"' EXIT
+cleanup() {
+	chmod -R u+w -- "$work" 2>/dev/null || true
+	rm -rf -- "$work"
+}
+trap cleanup EXIT
 
 require() {
 	command -v "$1" >/dev/null 2>&1 || {
@@ -117,8 +121,10 @@ checkout() {
 checkout "$cue_source" "$cue_revision" "$work/source/cue"
 checkout "$gopls_source" "$gopls_revision" "$work/source/tools"
 checkout "$gopy_source" "$gopy_revision" "$work/source/gopy"
-git -C "$work/source/gopy" apply --check "$repository_root/$gopy_patch_path"
-git -C "$work/source/gopy" apply "$repository_root/$gopy_patch_path"
+git -C "$work/source/gopy" apply --check --unidiff-zero \
+	"$repository_root/$gopy_patch_path"
+git -C "$work/source/gopy" apply --unidiff-zero \
+	"$repository_root/$gopy_patch_path"
 
 mkdir -p "$work/bin"
 go_build_flags=(-trimpath -buildvcs=true '-ldflags=-s -w')
@@ -242,7 +248,8 @@ compress_stage() {
 	local stage=$1 archive=$2
 	tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
 		-cf - -C "$stage" . |
-		zstd "-$compression_level" "-T$compression_threads" --no-progress -o "$archive"
+		zstd "-$compression_level" "-T$compression_threads" --force --no-progress \
+			-o "$archive"
 }
 
 go_stage=$(make_stage go)

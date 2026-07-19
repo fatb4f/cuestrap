@@ -76,7 +76,7 @@ bundle: {
 			source:   "https://github.com/go-python/gopy.git"
 			patch: {
 				path:   "tools/bundles/gopy-python-config.patch"
-				sha256: "a881b12513e7a5dd1d208612d707e397e1adea28d3e946bd9f21718d76c8d10b"
+				sha256: "bfd9d15f0172428f98f6e1b9c42067babc7856d7566c0294d6f155a2ff740696"
 			}
 			offlineModule: {
 				version: "v0.4.11-0.20260602125840-72557f647208"
