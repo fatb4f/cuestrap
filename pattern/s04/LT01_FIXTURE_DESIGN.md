@@ -26,7 +26,7 @@ contains no raw observations, normalized facts, comparison results, runtime
 capability assertions, or final semantic judgements.
 
 The later execution/judgement slice consumes the package tree digest
-`sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e` and populates the reserved evidence roots.
+`sha256:3a3556162a7b5bc4b740d26a8997961fb6e6533abb1d6dab0e5485ca85f4925b` and populates the reserved evidence roots.
 
 ## Validation
 
