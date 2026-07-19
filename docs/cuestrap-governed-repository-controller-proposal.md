@@ -4,54 +4,64 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft for review |
-| Scope | Normalization of all concepts currently expressed under `docs/` |
-| Intended audience | Architecture, contract, implementation, security, and agent-control reviewers |
-| Normative language | `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` are used as requirement terms |
-| Primary authorities | OSCAL lifecycle resources, CUE constraints, and Git object identity |
-| Primary controlled plant | Governed repository state and its linked governance/evidence graph |
+| Status | Draft for architecture review |
+| Scope | Normalized architecture for continuous OSCAL ATO, governed repository transitions, streaming assessment, and bounded agent execution |
+| Intended audience | Architecture, contract, implementation, security, compliance, and agent-control reviewers |
+| Normative language | `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` are requirement terms |
+| Semantic center | One continuously revised OSCAL-centered typed semantic graph |
+| Executable semantic authority | Pinned CUE relations through a narrow qualified Go facade |
+| Causal authority | Immutable graph checkpoints and ordered event segments bound to Git and cryptographic digests |
+| Analytical runtime | DuckDB materializations orchestrated by a qualified Marimo reactive DAG |
+| Effect boundary | Exact parent authorization plus narrowed one-use capabilities |
 
 ## Overview
 
-Cuestrap is a proof-carrying controller for governed repository state. It combines OSCAL lifecycle semantics, CUE admission contracts, and Git object identity so that every proposal, decision, effect, observation, and publication can be traced to an immutable source snapshot and a pinned contract revision.
+Cuestrap is a proof-carrying, event-sourced controller for a continuously evaluated authorization system. Its architectural center is **one shared typed semantic graph** containing normative controls, implementation state, assessment procedures, evidence, System A target facts, System B execution facts, findings, risks, remediation obligations, authorization decisions, and the currently derived authorization posture.
 
-The architecture separates authority from execution:
+The graph changes only through ordered, content-addressed transition events evaluated by a pinned CUE/Go transition kernel. Each accepted event advances an immutable graph revision. DuckDB materializes revision-bound semantic and temporal relations. Marimo owns the live reactive dependency graph that determines which materializations, metrics, assessment procedures, findings, risks, authorization-posture conclusions, and OSCAL projections must be recomputed after each change.
 
-- **OSCAL** defines governance objects, lifecycle identity, control relationships, assessments, findings, risks, and remediation state.
-- **CUE** defines the executable contract lattice: structural narrowing, semantic closure, authorization, transition guards, evidence requirements, and effect bounds.
-- **Git** records exact content, checkpoints, receipts, accepted state, and authorized publication.
-- **System A** owns authority resolution, admission, capability narrowing, result validation, settlement, and publication.
-- **System B** proposes, observes, evaluates, and executes only through an admitted bounded capability.
-- **Marimo** owns the live reactive Python DAG; DuckDB, GUAC, generated types, policy engines, and LLM runtimes remain projections or bounded adapters.
+```text
+immutable graph checkpoint
+        +
+ordered transition event
+        +
+pinned policy, procedure, and kernel revisions
+        ↓
+deterministic CUE/Go graph fold
+        ↓
+next semantic graph revision
+        ├── control and implementation state
+        ├── evidence currency and assessment state
+        ├── findings, risks, and POA&M obligations
+        ├── System A and System B conclusions
+        ├── continuously derived authorization posture
+        ├── permitted capability envelope
+        └── OSCAL lifecycle projections
+                 ↓
+        DuckDB materializations
+                 ↓
+        qualified Marimo reactive DAG
+                 ↓
+        next bounded evaluation cycle
+```
+
+Continuous ATO in this proposal does **not** mean that software accepts organizational risk or autonomously grants formal authorization. The accountable authorizing authority retains formal authorization and risk-acceptance responsibility. Cuestrap continuously derives and enforces the technical posture and delegated operating envelope that follow from the current authorization decision, current evidence, current policy, current graph revision, and current findings and risks.
 
 ### Implementation status boundary
 
-The repository currently implements only a **partial System B foundation**:
+The repository currently implements only part of the runtime foundation.
 
-| Implemented on `main` | Required before System B is complete |
+| Implemented on `main` | Still required for the architecture in this proposal |
 |---|---|
-| Main target workbook and typed workbook adapter | Session-scoped rollout/JSONL controller workbook |
-| One-operation Marimo controller with identity-bound request, claim, release, and receipt records | Committed-complete-prefix tailing of the Codex rollout JSONL |
-| `PreToolUse` and `PostToolUse` hook ingress with local pre/post correlation for recognized calls | Reconciliation of provisional hook ingress with committed rollout records |
-| Hook-local `state.json` and diagnostic `events.jsonl` ledger | DuckDB raw, normalized, causal, continuity, checkpoint, and evidence-manifest projections |
-| Provisional Python anti-churn predicates | Native CUE System B readiness, continuity, conformance, and effect-attribution conclusions |
-| Typed operation execution through a bounded workbook capability | Exact parent composition of System A, System B, tactical, and authorization conclusions |
+| Main target workbook and typed workbook adapter | One shared typed semantic graph and immutable graph-revision contract |
+| One-operation Marimo controller with identity-bound request, binding, claim, release, and receipt records | Canonical immutable event segments and deterministic graph fold |
+| `PreToolUse` and `PostToolUse` hook ingress with local correlation for recognized calls | Session-scoped rollout controller and reconciliation into canonical semantic events |
+| Hook-local `state.json` and diagnostic `events.jsonl` | DuckDB semantic, temporal, metric, finding, risk, posture, and OSCAL-projection materializations |
+| Provisional Python anti-churn predicates | Qualified CUE assessment procedures and authoritative technical conclusions |
+| Bounded operation execution through workbook capabilities | Continuously derived authorization posture and delegated capability envelope |
+| System A/System B terminology and partial evidence contracts | Independent evidence partitions inside one graph, composed without creating separate semantic universes |
 
-The hook-local ledger MUST be treated as provisional diagnostic evidence. It MUST NOT be described as the Codex rollout ledger, a complete streaming analytics implementation, or a complete System B control plane.
-
-The governing control loop is:
-
-```text
-observe immutable state
-    → construct and freeze a candidate proposal
-    → qualify identity, authority, evidence, state, and effects
-    → grant an exact bounded capability
-    → execute and collect receipts
-    → validate postconditions and settlement
-    → commit accepted OSCAL state and evidence to Git
-```
-
-This document specifies that authority allocation, the operation and transition contracts, checkpoint and settlement semantics, the constrained Git mutation boundary, the reactive playbook model, adapter-generation rules, conformance properties, and the implementation decisions still requiring review.
+The hook-local ledger MUST remain provisional diagnostic evidence. It MUST NOT be described as the canonical event ledger, the semantic graph, the continuous streaming analytics plane, or the complete System B implementation.
 
 ## Table of contents
 
@@ -63,1783 +73,1152 @@ This document specifies that authority allocation, the operation and transition 
 - [4. Core invariants](#4-core-invariants)
 - [5. Authority hierarchy](#5-authority-hierarchy)
 - [6. Identity model](#6-identity-model)
-- [7. Canonical domain model](#7-canonical-domain-model)
-- [8. Controlled plant and state model](#8-controlled-plant-and-state-model)
+- [7. Shared typed semantic graph](#7-shared-typed-semantic-graph)
+- [8. OSCAL lifecycle projections](#8-oscal-lifecycle-projections)
 - [9. System decomposition](#9-system-decomposition)
 
-### Transition and execution contracts
+### State, transition, and authority
 
-- [10. Snapshot and checkpoint model](#10-snapshot-and-checkpoint-model)
-- [11. Transition protocol](#11-transition-protocol)
+- [10. Graph revisions, snapshots, and checkpoints](#10-graph-revisions-snapshots-and-checkpoints)
+- [11. Event ledger and transition protocol](#11-event-ledger-and-transition-protocol)
 - [12. Admission law](#12-admission-law)
-- [13. Effect model](#13-effect-model)
-- [14. Authorization model](#14-authorization-model)
+- [13. Effect and capability model](#13-effect-and-capability-model)
+- [14. Authorization decision and continuous posture](#14-authorization-decision-and-continuous-posture)
 - [15. Evidence and provenance boundary](#15-evidence-and-provenance-boundary)
-- [16. System B runtime telemetry and streaming analytics](#16-system-b-runtime-telemetry-and-streaming-analytics)
-- [17. Settlement](#17-settlement)
-- [18. Reactive playbook model](#18-reactive-playbook-model)
-- [19. Failure, correction, extraction, and continuity](#19-failure-correction-extraction-and-continuity)
-- [20. Constrained Git mutation and publication boundary](#20-constrained-git-mutation-and-publication-boundary)
+
+### Continuous evaluation and execution
+
+- [16. Continuous OSCAL ATO semantic graph and reactive DAG](#16-continuous-oscal-ato-semantic-graph-and-reactive-dag)
+- [17. System B runtime telemetry and hook reconciliation](#17-system-b-runtime-telemetry-and-hook-reconciliation)
+- [18. Settlement](#18-settlement)
+- [19. Reactive playbook model](#19-reactive-playbook-model)
+- [20. Failure, correction, extraction, and continuity](#20-failure-correction-extraction-and-continuity)
+- [21. Constrained Git mutation and publication boundary](#21-constrained-git-mutation-and-publication-boundary)
 
 ### Services, projections, and adapters
 
-- [21. Supply-chain and evidence services](#21-supply-chain-and-evidence-services)
-- [22. Generation and adapter architecture](#22-generation-and-adapter-architecture)
-- [23. Python and LLM adapter profile](#23-python-and-llm-adapter-profile)
-- [24. Structural validation and compatibility](#24-structural-validation-and-compatibility)
-- [25. Query and graph materialization](#25-query-and-graph-materialization)
+- [22. Supply-chain and evidence services](#22-supply-chain-and-evidence-services)
+- [23. Generation and adapter architecture](#23-generation-and-adapter-architecture)
+- [24. Python and LLM adapter profile](#24-python-and-llm-adapter-profile)
+- [25. Structural validation and compatibility](#25-structural-validation-and-compatibility)
+- [26. DuckDB query and materialization plane](#26-duckdb-query-and-materialization-plane)
 
 ### Delivery and review
 
-- [26. End-to-end reconciliation loop](#26-end-to-end-reconciliation-loop)
-- [27. Minimal vertical slice](#27-minimal-vertical-slice)
-- [28. Proposed implementation stages](#28-proposed-implementation-stages)
-- [29. Required conformance properties](#29-required-conformance-properties)
-- [30. Review decisions required](#30-review-decisions-required)
-- [31. Source normalization map](#31-source-normalization-map)
-- [32. Compact normative formulation](#32-compact-normative-formulation)
-- [33. Proposed decision](#33-proposed-decision)
+- [27. End-to-end continuous reconciliation loop](#27-end-to-end-continuous-reconciliation-loop)
+- [28. Minimal vertical slice](#28-minimal-vertical-slice)
+- [29. Proposed implementation stages](#29-proposed-implementation-stages)
+- [30. Required conformance properties](#30-required-conformance-properties)
+- [31. Review decisions required](#31-review-decisions-required)
+- [32. Source normalization map](#32-source-normalization-map)
+- [33. Compact normative formulation](#33-compact-normative-formulation)
+- [34. Proposed decision](#34-proposed-decision)
 
 ## 1. Proposal
 
-Cuestrap SHOULD be implemented as a **governed repository controller** with the following compact contract:
+Cuestrap SHOULD be implemented as a continuously evaluated governed-repository controller with this normalized contract:
 
 ```text
 Cuestrap
-    = OSCAL lifecycle semantics
-    + CUE executable contracts
-    + Git immutable state and transition ledger
-    + one authority/admission plane
-    + one bounded proposal/execution plane
-    + one constrained mutation boundary
-    + proof-carrying observations, decisions, and publications
-    + generated or bounded adapters that cannot widen authority
+    = one shared OSCAL-centered typed semantic graph
+    + immutable graph checkpoints and ordered transition events
+    + a pinned deterministic CUE/Go transition kernel
+    + qualified executable assessment procedures
+    + independently evidenced System A and System B partitions
+    + DuckDB semantic and temporal materializations
+    + a qualified Marimo continuous reactive DAG
+    + continuously derived authorization posture
+    + accountable parent authorization and risk acceptance
+    + bounded one-use execution capabilities
+    + continuously refreshed OSCAL lifecycle projections
+    + constrained Git settlement and publication
 ```
 
-The OSCAL Component Definition, specialized by a Cuestrap CUE profile, is the canonical capability and operation publication surface. It is not paired with an independently authored API authority.
+The official OSCAL models remain the portable governance and lifecycle representation. CUE owns executable semantic closure, transition admissibility, assessment relations, posture derivation, and effect constraints. Git and cryptographic digests own exact source, graph-checkpoint, event-segment, artifact, receipt, and publication identity.
 
-The architecture MUST distinguish three kinds of truth:
-
-1. **Semantic and governance truth** — OSCAL resources and stable OSCAL identities.
-2. **Admissibility truth** — CUE constraints, relation closure, authorization rules, transition guards, and publication requirements.
-3. **State and content truth** — immutable Git objects, digests, commits, and qualified lifecycle artifacts.
-
-All other surfaces—including Marimo, DuckDB, GUAC, Pydantic, JSON Schema, OpenAPI, GraphQL, MCP, CLI, DSPy, model providers, constrained decoders, and policy engines—MUST be subordinate projections, evaluators, or bounded adapters.
+System A and System B are evidence partitions in the same graph. They MUST remain independently sourced and independently concluded, but they MUST NOT be modeled as unrelated semantic universes. Their conclusions compose through typed relations over shared subjects, operation identities, graph revisions, policy revisions, procedure revisions, and event cutoffs.
 
 ## 2. Review objectives
 
-This proposal resolves five recurring ambiguities in the source documents:
+This proposal resolves the following recurring ambiguities:
 
-1. **OSCAL versus CUE authority** — OSCAL owns lifecycle objects and semantic identity; CUE owns executable admissibility. Neither is reducible to the other.
-2. **Git versus runtime state** — Git and committed OSCAL artifacts are authoritative. Runtime databases and notebook state are projections.
-3. **Marimo authority** — Marimo owns the actual live Python dependency graph and its execution semantics, but it does not own governance policy, authorization, or publication.
-4. **Agent discretion** — models and DSPy rank or instantiate pre-admitted alternatives; they do not create operational policy or authorize effects.
-5. **Component Definition as API** — the official OSCAL Component Definition remains structurally valid OSCAL; Cuestrap adds a CUE-governed capability/operation profile using OSCAL identities and extension points. Generated transports are projections of that combined contract.
+1. **Bounded operation versus continuous ATO** — bounded operations are effect transactions inside a larger continuously evaluated semantic and authorization system.
+2. **System A versus System B** — they are independently evidenced partitions and views of one graph, not competing authorities or isolated state stores.
+3. **OSCAL versus CUE** — OSCAL owns lifecycle representation and stable governance identity; CUE owns executable semantic relations and admissibility.
+4. **JSONL telemetry versus the canonical event ledger** — host rollout JSONL is an input source. Canonical semantic events are immutable, normalized, qualified records in the graph-transition ledger.
+5. **DuckDB and Marimo authority** — DuckDB materializes; Marimo orchestrates reactive dependencies. Neither owns semantic conclusions.
+6. **Procedure qualification versus live assessment** — proof that a procedure is trustworthy is distinct from evidence produced by one invocation of that procedure.
+7. **Formal authorization versus derived posture** — accountable authority accepts risk; the controller continuously derives and enforces technical posture and delegated operating conditions.
+8. **Reactive recomputation versus actuation** — graph recomputation may narrow authority immediately, but it cannot directly execute a mutation.
+9. **Component Definition as API** — the official Component Definition plus the Cuestrap CUE profile is the canonical capability publication surface; generated transports are subordinate projections.
 
 ## 3. Non-goals
 
-The initial architecture is not:
+The architecture is not:
 
-- a general-purpose autonomous-agent framework;
-- a parallel workflow database that competes with Git;
-- an independently authored OpenAPI, GraphQL, Python, or finite-state-machine authority;
-- a system in which reactive recomputation can trigger unqualified effects;
-- a semantic graph whose derived node IDs replace OSCAL UUIDs or Git identities;
+- an autonomous authorizing official;
+- a replacement for organizational risk acceptance;
+- a mutable notebook whose cells are the authoritative compliance record;
+- a database-led governance model in which SQL rows redefine OSCAL or CUE meanings;
+- a second workflow ledger that competes with Git and immutable event segments;
 - a model-driven replanner with unrestricted action synthesis;
-- a claim that every OSCAL concept must be forced into an HTTP endpoint shape.
+- an independently authored OpenAPI, GraphQL, Pydantic, or finite-state-machine authority;
+- a universal interception layer for every host tool;
+- a claim that successful execution retroactively authorizes initiation;
+- a system in which a metric breach, stream event, or reactive invalidation directly performs an effect.
 
 ## 4. Core invariants
 
-The following invariants are normative.
+### 4.1 One semantic graph
 
-### 4.1 Single authority chain
+All authority-bearing normative, implementation, qualification, assessment, execution, risk, remediation, and posture facts MUST be representable in one typed semantic graph. Partitions preserve authority and provenance; they do not create separate meanings for the same subject.
 
-```text
-official OSCAL structural model
-        ↓
-resolved OSCAL lifecycle closure
-        ↓
-Cuestrap CUE profile and semantic constraints
-        ↓
-qualified operation or transition
-        ↓
-bounded execution capability
-        ↓
-execution receipt and evidence binding
-        ↓
-validated resulting OSCAL closure
-        ↓
-Git commit and authorized reference publication
-```
+### 4.2 Event-sourced graph advancement
 
-A downstream projection MUST NOT redefine an upstream meaning.
+Every causal graph change MUST be represented by an immutable ordered transition event. The accepted graph revision MUST be reproducible from a qualified checkpoint, ordered events, and pinned policy, procedure, and kernel identities.
 
-### 4.2 Frozen-before-qualified
+### 4.3 Frozen before qualified
 
-Every proposal that may influence authority, graph topology, repository mutation, assessment conclusions, or publication MUST be normalized, frozen, and content-addressed before qualification.
+Any proposal, event, procedure, evidence manifest, graph delta, posture conclusion, capability grant, or publication request that may influence authority MUST be normalized, frozen, and content-addressed before qualification.
 
-### 4.3 No authority by successful execution
+### 4.4 No authority by successful execution
 
-Successful model inference, notebook execution, policy evaluation, tool invocation, or shell exit status MUST NOT by itself establish admission, evidence, settlement, or publication authority.
+Successful model inference, SQL execution, notebook execution, tool invocation, test result, or shell exit status MUST NOT by itself establish admission, evidence, conformance, settlement, posture, or publication authority.
 
-### 4.4 No ambient mutation authority
+### 4.5 Reactive non-actuation
 
-Effectful adapters MUST receive a narrowed capability bound to an exact operation, subject, source snapshot, contract revision, effect set, and execution epoch. They MUST NOT receive ambient repository or provider authority when a narrower capability is possible.
+A new event MAY invalidate descendants, recompute metrics, create findings, narrow posture, suspend a delegated envelope, or construct a remediation proposal. It MUST NOT directly execute a mutation. Effects require a separate admitted capability.
 
-### 4.5 No derived parallel authority
+### 4.6 Qualified procedures only
 
-The following are explicitly non-authoritative:
+An assessment conclusion is authoritative only when produced by an exact currently qualified procedure, evaluator, policy revision, subject revision, and evidence cutoff. A stale or unavailable procedure produces an unavailable or indeterminate conclusion, never implicit satisfaction.
 
-- mutable branch names without a resolved commit;
-- GUAC node IDs;
-- DuckDB rows and views;
-- Marimo in-memory values;
-- generated Pydantic classes;
-- JSON Schema, OpenAPI, or GraphQL projections;
-- DSPy scores or model recommendations;
-- provider-native structured-output acceptance;
-- Minder or other policy-engine conclusions before binding and qualification.
+### 4.7 No derived parallel authority
+
+DuckDB rows, Marimo values, GUAC identifiers, generated classes, dashboards, policy-engine output, model scores, and provider-native structured output are reconstructable projections or observations. They MUST NOT redefine graph, OSCAL, CUE, Git, event, or accountable-authority truth.
+
+### 4.8 Provenance-preserving composition
+
+System A and System B facts MAY compose only while their independent source references, graph revisions, policy revisions, procedure identities, event cutoffs, and evidence manifests remain visible and compatible.
 
 ## 5. Authority hierarchy
 
 | Tier | Authority | Canonical responsibility |
 |---|---|---|
-| 0 | Git OIDs and cryptographic digests | Exact content, tree, commit, artifact, receipt, and attestation identity |
-| 1 | Official OSCAL resources and UUIDs | Governance objects, lifecycle identity, imports, links, controls, implementations, assessments, findings, risks, remediation |
-| 2 | CUE contracts and Cuestrap profiles | Structural narrowing, semantic relations, operation contracts, authorization, state transitions, evidence requirements, effect bounds |
-| 3 | Qualified operational evidence | Observations, receipts, attestations, SBOMs, test results, counterexamples, Assessment Results |
-| 4 | Materialized query projections | GUAC, DuckDB, indexes, caches, analytical views |
-| 5 | Generated and transport projections | Go, Python, Pydantic, Hypothesis, JSON Schema, OpenAPI, GraphQL, CLI, MCP, reports, dashboards |
+| 0 | Git OIDs and cryptographic digests | Exact repository, graph checkpoint, event segment, artifact, receipt, and attestation identity |
+| 1 | Accountable authorization records and official OSCAL resources | Organizational authorization, risk acceptance, governance objects, lifecycle identity, controls, implementations, assessments, risks, and remediation |
+| 2 | CUE contracts through the qualified Go facade | Graph integrity, transition relations, procedure semantics, evidence qualification, posture derivation, effect bounds, and publication requirements |
+| 3 | Qualified operational evidence | Observations, receipts, attestations, SBOMs, tests, counterexamples, assessment invocations, and System A/System B conclusions |
+| 4 | Canonical graph checkpoints and event ledger | Reproducible causal history and current semantic state |
+| 5 | Materialized projections | DuckDB, GUAC, indexes, caches, metrics, analytical views, and Marimo values |
+| 6 | Generated transport surfaces | Go/Python types, Pydantic, Hypothesis, JSON Schema, OpenAPI, GraphQL, CLI, MCP, reports, and dashboards |
 
 A higher-numbered tier MAY be regenerated or replaced. It MUST NOT redefine a lower-numbered tier.
 
 ## 6. Identity model
 
-Cuestrap MUST preserve distinct identity domains rather than collapse them.
+Cuestrap MUST preserve distinct identity domains.
 
 | Identity | Meaning |
 |---|---|
-| OSCAL UUID | Stable semantic and lifecycle identity |
-| CUE-qualified identifier | Stable contract vocabulary identity |
-| Git blob OID | Exact atomic content identity |
-| Git tree OID | Exact package or component closure |
-| Git commit OID | Coherent repository-state identity |
-| pURL or VCS URI | Software/package identity |
-| Attestation subject digest | Exact claim-subject identity |
-| GUAC node ID | Derived local graph-index identity |
-
-A complete authoritative reference SHOULD include enough coordinates to prevent mutable-pointer ambiguity:
+| OSCAL UUID | Stable lifecycle and governance identity |
+| CUE identifier | Stable contract vocabulary and relation identity |
+| Git blob/tree/commit OID | Exact content and coherent repository-state identity |
+| Graph revision digest | Exact semantic graph closure after an accepted event cutoff |
+| Policy revision digest | Exact transition, assessment, posture, and authorization-condition rules |
+| Kernel revision digest | Exact CUE/Go evaluator implementation and build identity |
+| Event segment digest and position | Exact causal ledger source and ordered cutoff |
+| Procedure qualification receipt | Proof that one assessment procedure revision is trusted for a bounded domain |
+| Assessment invocation receipt | Evidence and result for one concrete procedure execution |
+| Projection receipt | Exact projector, input revision/cutoff, output artifact, and schema identity |
+| Capability grant digest | Exact narrowed authority for one effect transaction |
 
 ```cue
-#AuthoritativeReference: {
-	repository: string & != ""
-	commit:     #Digest
-	path:       string
-
-	blob?: #Digest
-	tree?: #Digest
-
-	oscalUUID?: string
-	cueID?:     string
-}
+#SemanticCoordinate: close({
+    subjectRef:       #Reference
+    graphRevision:    #Digest
+    policyRevision:   #Digest
+    kernelRevision:   #Digest
+    eventCutoff:      #EventPosition
+    repositoryCommit?: #Digest
+})
 ```
 
-A branch such as `main` MAY be used for discovery, but MUST be resolved to an immutable commit before qualification.
+Mutable names such as `main`, a workbook session name, a database filename, or a dashboard URL MAY aid discovery but MUST resolve to immutable coordinates before qualification.
 
-Identity equivalence MUST be declared or admitted by CUE policy. GUAC or another correlation engine MAY propose equivalence evidence but MUST NOT establish canonical equivalence independently.
+## 7. Shared typed semantic graph
 
-## 7. Canonical domain model
+The graph SHOULD expose at least these authority-bounded partitions.
 
-### 7.1 OSCAL lifecycle roles
+### 7.1 Normative partition
 
-Cuestrap SHOULD use OSCAL models as one governed lifecycle:
+- OSCAL catalogs, profiles, controls, objectives, parameters, constraints, procedures, and required evidence;
+- CUE relation and policy identities;
+- authorization-condition vocabulary and transition classes.
 
-| OSCAL model | Cuestrap role |
+### 7.2 Implementation partition
+
+- components, capabilities, services, inventories, repositories, workbooks, dependencies, implementation statements, responsibility assignments, and inheritance relationships;
+- target state and relevant-state projections.
+
+### 7.3 Qualification partition
+
+- assessment procedure specifications;
+- generators, witnesses, mutation classes, negative fixtures, metamorphic properties, evaluator identities, qualification plans, and qualification receipts.
+
+### 7.4 System A partition
+
+- target subjects and snapshots;
+- implementation observations;
+- control-objective results;
+- findings, risks, remediation state, and resulting target conclusions.
+
+### 7.5 System B partition
+
+- operation orders, proposals, parent decisions, capability grants, hook ingress, rollout records, dispatch/start/terminal records, controller claims and receipts, continuity epochs, conformance, and effect attribution.
+
+### 7.6 Governance partition
+
+- formal authorization records;
+- authorization conditions and expiry;
+- derived technical posture;
+- delegated operating envelope;
+- references to independent System A and System B conclusions;
+- joint operation conclusions and settlement dispositions.
+
+A graph node or relation MUST retain its authority owner, source references, revision coordinates, and evidence status. A derived correlation MUST NOT erase the independent provenance of its operands.
+
+## 8. OSCAL lifecycle projections
+
+OSCAL artifacts are continuously refreshed, governed projections of exact graph revisions and event cutoffs.
+
+| OSCAL resource | Graph projection role |
 |---|---|
-| Catalog | Governance vocabulary and required guarantees |
-| Profile | Selected, parameterized, and narrowed requirements |
-| Component Definition | Reusable governed capabilities and operation publication |
-| System Security Plan | Concrete component, deployment, responsibility, and inheritance binding |
-| Assessment Plan | Evaluation contract: subjects, tasks, inputs, predicates, and evidence requirements |
-| Assessment Results | Qualified activities, observations, findings, and risks |
-| POA&M | Corrective transition, milestone, evidence, and reassessment lifecycle |
+| Catalog | Normative controls, objectives, properties, and assessment expectations |
+| Profile | Selected, parameterized, tailored, and scoped requirements |
+| Component Definition | Reusable capabilities, control implementations, operation publication, and supporting evidence references |
+| System Security Plan | Concrete system, deployment, responsibility, inheritance, component, inventory, and implementation state |
+| Assessment Plan | Qualified assessment procedures, subjects, tasks, evidence contracts, methods, and timing |
+| Assessment Results | Concrete assessment invocations, observations, findings, risks, limitations, and System A/System B conclusions |
+| POA&M | Open deficiencies, milestones, remediation obligations, owners, deadlines, and reassessment requirements |
+| Authorization package records | Accountable authorization decision, accepted risks, conditions, expiry, and delegated operating envelope |
 
-### 7.2 Component Definition API profile
-
-The phrase “Component Definition is the API” is normalized as follows:
-
-> The official OSCAL Component Definition is the canonical capability publication resource. A Cuestrap CUE profile overlays a closed operation contract onto OSCAL-identified components, capabilities, control implementations, properties, links, and extension points. All generated callable surfaces derive from that combined OSCAL/CUE closure.
-
-This avoids two invalid extremes:
-
-- treating the Component Definition as mere prose linked to a separate API authority;
-- claiming that arbitrary operation fields are native official OSCAL fields when they are actually Cuestrap profile semantics.
-
-### 7.3 Operation contract
-
-The canonical operation model SHOULD expose at least the following contract:
+Every projection MUST bind:
 
 ```cue
-#OperationMode: "query" | "command" | "transition"
-
-#Operation: {
-	operationID: string & != ""
-	mode:        #OperationMode
-
-	input:  _
-	output: _
-	errors: [string]: _
-
-	reads:  [...#ResourceSelector]
-	writes: [...#MutationClass]
-
-	requires: [...#Assertion]
-	ensures:  [...#Assertion]
-
-	authorization: #AuthorizationPolicy
-	controlRefs:   [...#ControlReference]
-
-	effects: {
-		class:   #EffectClass
-		allowed: [...#Effect]
-		forbidden?: [...#Effect]
-	}
-
-	evidence: {
-		required: [...#EvidenceRequirement]
-		produces: [...#EvidenceType]
-	}
-
-	transition?: {
-		from:       #StateConstraint
-		event:      string & != ""
-		to:         #StateConstraint
-		invariants: [...#Assertion]
-	}
-}
+#OSCALProjectionReceipt: close({
+    model:             string & != ""
+    graphRevision:     #Digest
+    policyRevision:    #Digest
+    eventCutoff:       #EventPosition
+    projectorRevision: #Digest
+    sourceSetDigest:   #Digest
+    artifactDigest:    #Digest
+    validationReceipt: #Digest
+})
 ```
 
-An operation MAY project to a Go method, CLI command, MCP tool, HTTP endpoint, workflow action, assessment procedure, evidence collector, Git mutation, policy query, remediation procedure, or human-governed transition.
-
-The operation contract—not the transport—defines meaning.
-
-## 8. Controlled plant and state model
-
-The controlled plant is the governed repository graph:
-
-```text
-RepositoryState
-├── immutable Git object graph
-├── references and publication pointers
-├── index, worktree, and untracked workspace state
-├── proposal and conflict graph
-├── pull-request, review, and check state
-├── OSCAL governance and lifecycle graph
-├── evidence, SBOM, provenance, and attestation graph
-└── actor, role, trust-epoch, and publication context
-```
-
-The current authoritative lifecycle state MUST be reconstructible as a deterministic fold over:
-
-```text
-Git history
-+ committed OSCAL lifecycle artifacts
-+ qualified transition decisions
-+ qualified execution and publication receipts
-```
-
-A runtime database MAY accelerate reconstruction, but MUST be disposable.
+OSCAL artifacts MUST validate against official schemas outside the semantic kernel. CUE MUST evaluate the bounded semantic projection, not reproduce the entire official schema.
 
 ## 9. System decomposition
 
-### 9.1 System A — authority, target, ledger, and admission plane
+### 9.1 Semantic graph and transition kernel
 
-System A owns:
+The graph and pinned CUE/Go kernel own deterministic semantic state advancement. They do not execute effects or accept organizational risk.
 
-- authoritative Git and committed OSCAL state;
-- desired-state publication;
-- pinned contract revisions;
-- actor and authority context;
-- frozen proposal registry;
-- transition admission or rejection;
-- narrowed capability issuance;
-- returned-result validation;
-- settlement and publication decisions;
-- accepted reference updates.
+### 9.2 System A evidence partition
 
-System A MUST be the only plane that can publish a candidate result as authoritative repository state.
+System A observes and assesses the governed target: repository, worktree, workbook, component, OSCAL implementation, and resulting technical state. It produces target eligibility and outcome conclusions from independently qualified evidence.
 
-### 9.2 System B — proposal, telemetry, evaluation, and bounded execution plane
+### 9.3 System B evidence partition
 
-System B owns:
+System B observes and assesses the execution plane: proposal, admission, dispatch, continuity, tool behavior, controller receipts, terminal state, conformance, and effect attribution. Hook and rollout telemetry are source branches within this partition.
 
-- candidate proposals and bounded playbook instantiations;
-- the session-scoped runtime observation plane;
-- mechanically normalized Codex rollout records;
-- provisional hook-ingress reconciliation;
-- dispatch, terminal-result, and operation-receipt correlation;
-- pending-operation, continuity-epoch, and execution-conformance projections;
-- test and assessment execution;
-- evidence collection;
-- remediation execution under granted capability;
-- counterexamples and diagnostics;
-- execution receipts;
-- candidate resulting state.
+### 9.4 DuckDB analytical plane
 
-System B runtime evidence MUST preserve this source hierarchy:
+DuckDB materializes revision-bound graph, event, temporal, metric, assessment, risk, posture, and projection relations. It is reconstructable and non-authoritative.
+
+### 9.5 Marimo reactive plane
+
+Marimo owns the actual live Python dependency DAG: source cursors, graph-fold invocation, materialization refresh, affected-subject selection, metric windows, procedure invocation, posture refresh, OSCAL previews, and review surfaces. It does not own semantic conclusions or mutation authority.
+
+### 9.6 Parent and accountable authority
+
+The parent qualifies one exact operation order and authorizes one exact bounded bundle. The accountable authorizing authority owns formal system authorization and risk acceptance. Neither may manufacture missing technical evidence.
+
+## 10. Graph revisions, snapshots, and checkpoints
+
+The controller MUST distinguish:
+
+- **repository snapshot** — exact Git and relevant live-target state;
+- **graph checkpoint** — complete content-addressed semantic graph closure at an event cutoff;
+- **operation base** — target and graph state against which an operation was constructed;
+- **prior settled checkpoint** — last fully settled graph, target, posture, OSCAL, and publication state;
+- **candidate checkpoint** — proposed resulting state before settlement;
+- **projection checkpoint** — rebuildable DuckDB or OSCAL projection bound to a graph revision.
+
+```cue
+#GraphCheckpoint: close({
+    graphRevision:  #Digest
+    policyRevision: #Digest
+    kernelRevision: #Digest
+    eventCutoff:    #EventPosition
+    repository?:    #RepositorySnapshot
+    rootSetDigest:  #Digest
+    nodeSetDigest:  #Digest
+    edgeSetDigest:  #Digest
+    createdBy:      #QualifiedProcedureReference
+})
+```
+
+A checkpoint MUST NOT advance merely because a job completed. It advances only after all required graph, evidence, posture, projection, and publication conditions settle.
+
+## 11. Event ledger and transition protocol
+
+### 11.1 Canonical transition events
+
+The canonical event ledger is the causal memory of the semantic graph.
+
+```cue
+#TransitionEvent: close({
+    eventID:  string & != ""
+    sequence: uint64
+    occurredAt?: string
+    admittedAt:  string
+
+    context: close({
+        priorGraphRevision: #Digest
+        policyRevision:     #Digest
+        kernelRevision:     #Digest
+    })
+
+    sourceRefs: [#RawRecordReference, ...#RawRecordReference]
+    transition: #Transition
+    decision?:  #TransitionDecision
+    result?:    #ObservedResult
+    evidence:   [...#EvidenceReference]
+
+    nextGraphRevision?: #Digest
+})
+```
+
+Raw host events become canonical semantic events only after deterministic normalization, source binding, identity reconciliation, schema validation, and transition admission.
+
+### 11.2 Immutable event segments
+
+The durable ledger SHOULD use immutable checksummed segments rather than one indefinitely mutable file.
 
 ```text
-Codex rollout JSONL committed complete prefix
-    = primary System B runtime ledger
-
-operation-controller request, binding, claim, release, and receipt records
-    = authoritative controller-side execution records
-
-PreToolUse and PostToolUse hook ingress
-    = provisional low-latency observations pending reconciliation
-
-DuckDB relations and Marimo values
-    = reconstructable analytical projections
+events/
+  000000000001-000000001000.jsonl
+  000000001001-000000002000.jsonl
+  000000002001-000000003000.jsonl
 ```
 
-System B MUST NOT:
+Each segment MUST bind sequence range, previous-segment digest, schema revision, record count, byte length, content digest, and sealing receipt. A trailing partial record is never admitted.
 
-- redefine policy or contract meaning;
-- widen its capability;
-- repair or manufacture evidence to satisfy closure;
-- promote provisional hook ingress into committed runtime truth without reconciliation;
-- mutate protected state outside the grant;
-- publish authoritative state;
-- treat raw output or a DuckDB query result as qualified evidence.
-
-### 9.3 Marimo — live reactive execution and inspection plane
-
-The architecture uses three distinct Marimo lifetimes:
-
-| Workbook | Lifetime | Responsibility |
-|---|---|---|
-| Main CUEstrap workbook | Long-lived | System A target, implementation, and interactive experiment surface |
-| Rollout/JSONL controller workbook | Session- or rollout-scoped | System B committed-prefix ingestion, hook reconciliation, DuckDB projection, continuity, and evidence-manifest construction |
-| Operation-controller workbook | One bounded action | Identity-bound pre-state, one-use effect, post-state, and durable execution receipts |
-
-Marimo is authoritative for the actual live Python dependency graphs it constructs:
-
-- cell dependency analysis;
-- invalidation;
-- scheduling;
-- reactive execution;
-- stale-state propagation;
-- graph settlement.
-
-The rollout controller MUST be reconstructable from the committed raw source prefix, its qualified workbook revision, controller receipts, and projection receipts. The main workbook MUST NOT supervise or authorize its own mutations. The operation workbook MUST remain one-use and capability-bound.
-
-Marimo is not authoritative for:
-
-- governance semantics;
-- operation admission;
-- actor authorization;
-- evidence qualification;
-- System B readiness, continuity, conformance, or effect-attribution conclusions;
-- Git publication.
-
-A CUE-admitted playbook MAY compile to a bounded Marimo source mutation. Marimo then reconstructs and executes the resulting DAG.
-
-### 9.4 DuckDB — required System B analytical materialization
-
-The first complete System B implementation MUST use DuckDB to maintain incremental, queryable projections of:
-
-- immutable raw-record coordinates and digests;
-- committed rollout prefixes and source generations;
-- mechanically normalized runtime events;
-- provisional hook ingress and reconciliation status;
-- proposed, effective, dispatched, terminal, and receipted action correlations;
-- pending and abandoned operations;
-- continuity and trust epochs;
-- operation-base, prior-settled, and candidate deltas;
-- evidence manifests and projection receipts;
-- historical evaluation corpora and settlement metrics.
-
-DuckDB MUST remain reconstructible from authoritative records. SQL and materialized views MUST NOT emit authoritative `approve`, `eligible`, `conformant`, `settled`, or equivalent semantic conclusions. They provide closed facts to native CUE evaluation.
-
-### 9.5 DSPy and models — bounded proposal/ranking plane
-
-DSPy MAY:
-
-- compile model-facing programs;
-- rank a CUE-derived eligible playbook subset;
-- score candidate mappings or transitions;
-- report matched signals, conflicts, uncertainty, or abstention;
-- optimize prompts, demonstrations, and model parameters against admitted metrics.
-
-DSPy and models MUST NOT:
-
-- create a new playbook during execution;
-- remove a precondition;
-- widen authority or effects;
-- reinterpret missing evidence as approval;
-- change the operation objective;
-- mutate the repository or Marimo graph directly;
-- publish findings, risks, or state.
-
-### 9.6 Parent authority
-
-A human or external authority MUST authorize material changes outside the delegated operation envelope, including changes to:
-
-- objective;
-- authority scope;
-- accepted risk;
-- external resources;
-- operation topology;
-- execution contract.
-
-Such a change MUST suspend or terminate the current bounded operation and start a new operation contract.
-
-### 9.7 Current implementation boundary
-
-The current repository contains the main workbook, typed workbook adapter, operation-controller workbook, hook-local supervisor state, and a diagnostic append-only hook ledger. It does not yet contain the rollout/JSONL controller workbook or DuckDB dependency and schema required by this proposal.
-
-No implementation report MAY claim complete System B supervision, streaming analytics, readiness, continuity, conformance, effect attribution, or settlement until Section 16 is implemented and qualified end to end.
-
-## 10. Snapshot and checkpoint model
-
-Every bounded operation MUST use three distinct immutable anchors.
-
-```cue
-#OperationAnchors: {
-	operationBase: #RepositorySnapshot
-	priorSettled:  #RepositorySnapshot
-	candidate:     #RepositorySnapshot
-}
-```
-
-### 10.1 Operation base
-
-The operation base is the admitted repository snapshot at operation start. It is the pre-operation last-known-good state.
-
-If relevant initial state is dirty, untracked, or external, startup MUST either capture an explicit qualified base checkpoint or reject the operation.
-
-### 10.2 Prior settled checkpoint
-
-The prior settled checkpoint is the most recent candidate that completed execution, postcondition validation, evidence qualification, and settlement.
-
-It advances only after settlement.
-
-### 10.3 Candidate checkpoint
-
-The candidate checkpoint is the exact program, repository tree, relevant projected state, and evidence prefix currently under evaluation.
-
-A rejected, failed, or indeterminate candidate remains durable evidence but MUST NOT advance `priorSettled`.
-
-### 10.4 Required deltas
-
-Every transition evaluation SHOULD receive:
+### 11.3 Deterministic graph fold
 
 ```text
-localTransitionDelta
-    = candidate − priorSettled
-
-cumulativeOperationDelta
-    = candidate − operationBase
-
-priorSettledCumulativeDelta
-    = priorSettled − operationBase
+checkpoint₀ + event₁ → revision₁
+revision₁  + event₂ → revision₂
+revision₂  + event₃ → revision₃
 ```
 
-These deltas answer different questions and MUST NOT be conflated.
+For identical checkpoint, ordered event set, policy revision, procedure set, and kernel revision, batch replay and incremental streaming MUST produce the same graph revision and conclusions.
 
-### 10.5 Two-record checkpointing
+### 11.4 Transition request and decision
 
-Every authority-bearing evaluation SHOULD produce two immutable records:
-
-1. **Candidate checkpoint or commit** — captures the exact program/tree, relevant state projections, operation base, prior settled anchor, DAG revision, objective revision, evidence-prefix identity, and evaluator identity.
-2. **Decision receipt** — binds the candidate to its qualification disposition, reasons, eligible-playbook-set digest, selected playbook when applicable, resulting graph revision, and eventual settlement status.
-
-The qualification verdict MUST NOT be retroactively written into the candidate record. The candidate establishes what was evaluated; the decision receipt establishes what was concluded about it.
-
-A new qualification epoch SHOULD close when a material authority-bearing boundary changes, including:
-
-- relevant program or repository state;
-- evidence-prefix identity;
-- objective revision;
-- remaining budgets;
-- continuity or trust epoch;
-- eligible playbook-set revision;
-- disposition boundary;
-- proposed DAG or graph mutation.
-
-## 11. Transition protocol
-
-The source term “AOT conclusion” is replaced by the explicit term **Transition Qualification Decision**.
-
-### 11.1 Request
-
-```cue
-#TransitionRequest: {
-	from: #RepositorySnapshot
-
-	operation: #OperationReference
-	input:     _
-	targets:   [...#GraphIdentity]
-
-	actor:     #ActorReference
-	authority: #AuthorityContext
-	evidence:  [...#EvidenceReference]
-}
-```
-
-### 11.2 Proposal
-
-```cue
-#TransitionProposal: {
-	requestDigest: #Digest
-	contract:      #AuthoritativeReference
-
-	preconditions:  [...#Assertion]
-	operations:     [...#GraphOperation]
-	postconditions: [...#Assertion]
-	expected:       #RepositoryProjection
-
-	producer: {
-		kind:     "model" | "human" | "deterministic"
-		identity: string
-	}
-
-	frozen: true
-	digest: #Digest
-}
-```
-
-### 11.3 Qualification decision
-
-```cue
-#TransitionDisposition:
-	"admitted" |
-	"denied" |
-	"indeterminate" |
-	"continuity-lost"
-
-#TransitionQualificationDecision: {
-	proposalDigest: #Digest
-	disposition:    #TransitionDisposition
-	reasons:        [...#Reason]
-
-	sourceCurrent:   bool
-	identityClosure: bool
-	authorityClosure: bool
-	evidenceClosure: bool
-	invariantsHold:  bool
-
-	capability?: #ExecutionCapability
-	decisionDigest: #Digest
-}
-```
-
-### 11.4 Capability grant
-
-An admitted decision MUST issue a capability narrowed by:
-
-- operation identity;
-- actor identity;
-- exact source snapshot;
-- contract revision;
-- targets and resource selectors;
-- permitted mutation classes;
-- permitted effects;
-- budgets;
-- trust epoch;
-- execution epoch;
-- expiry or single-use semantics.
-
-### 11.5 Execution receipt
-
-```cue
-#ExecutionReceipt: {
-	decisionDigest: #Digest
-	capabilityDigest: #Digest
-
-	executor: #ActorReference
-	toolchain: #ToolchainIdentity
-	epoch:     #ExecutionEpoch
-
-	observedReads:  [...#ObservedRead]
-	attemptedWrites: [...#ObservedWrite]
-	producedArtifacts: [...#ArtifactReference]
-	rawOutputs: [...#RawOutputReference]
-
-	candidateResult: #RepositoryProjection
-	receiptDigest:   #Digest
-}
-```
-
-### 11.6 Result validation and settlement
-
-System A MUST validate:
-
-```text
-receipt matches decision and capability
-∧ source snapshot remained admissible
-∧ writes remained inside effect bounds
-∧ artifacts and outputs match their digests
-∧ required evidence is provenance-bound
-∧ postconditions hold
-∧ protected invariants hold
-∧ resulting OSCAL closure is admitted
-∧ publication conditions hold
-```
-
-Only then MAY System A construct the authoritative commit and move the authorized reference.
+A transition proposal MUST identify the actor, subjects, operation, prior graph, policy, event cutoff, repository snapshot, reads, effects, evidence requirements, and requested resulting state. Qualification MUST return an explicit admitted, denied, unavailable, or indeterminate result with a receipt.
 
 ## 12. Admission law
 
-Admission is conjunctive, not score-based.
+Governed admission for a bounded effect is:
 
 ```text
-AdmittedTransition
-    = current immutable source snapshot
-    ∧ pinned trusted contract revision
-    ∧ official OSCAL structural validity
-    ∧ generated CUE structural validity
-    ∧ Cuestrap semantic and relation closure
-    ∧ valid actor and authority context
-    ∧ valid operation and input
-    ∧ valid lifecycle state
-    ∧ current continuity epoch
-    ∧ required evidence closure
-    ∧ permitted mutation vocabulary
-    ∧ bounded effects and budgets
-    ∧ protected invariants
-    ∧ negative witnesses remain rejected
-    ∧ valid projected resulting state
-    ∧ publication requirements
+governed admission
+= current graph and repository identities
+∧ current policy and kernel identities
+∧ current qualified assessment procedures
+∧ System A technical eligibility
+∧ System B readiness and trusted continuity
+∧ qualified tactical conclusion
+∧ authorization posture permits the operation
+∧ exact accountable authorization conditions remain valid
+∧ exact parent decision authorizes the bundle
+∧ requested effects fit a narrowed capability
+∧ no identity, evidence, event, or projection conflict remains
 ```
 
-No model score, policy score, confidence, or utility estimate may compensate for a failed hard conjunct.
+Admission is prospective. A later successful outcome cannot repair missing initiation authority. Restrictive evidence MAY narrow or suspend authority immediately when its provenance and applicability are qualified. Expansive authority requires complete qualification and accountable authority where required.
 
-## 13. Effect model
+## 13. Effect and capability model
+
+Effects MUST be expressed as a closed mutation vocabulary rather than ambient tool access.
 
 ```cue
-#EffectClass:
-	"pure" |
-	"proposal" |
-	"qualification" |
-	"observation" |
-	"effect" |
-	"publication"
+#CapabilityGrant: close({
+    grantID:            #Digest
+    actorRef:           #Reference
+    operationRef:       #Reference
+    graphRevision:      #Digest
+    policyRevision:     #Digest
+    eventCutoff:        #EventPosition
+    repositorySnapshot: #RepositorySnapshot
+    authorizationRef:   #Reference
+    parentDecisionRef:  #Reference
+    allowedEffects:     [#Effect, ...#Effect]
+    deniedEffects:      [...#Effect]
+    executionEpoch:     #Digest
+    expiresAt:          string
+    maximumUses:        1
+})
 ```
 
-| Class | Rule |
-|---|---|
-| `pure` | Reactive and cacheable |
-| `proposal` | Reactive but non-authoritative; MUST be frozen before qualification |
-| `qualification` | Evaluated against immutable inputs and contract identity |
-| `observation` | Bound to an explicit source, trust, and execution epoch |
-| `effect` | Requires an exact narrowed capability |
-| `publication` | Requires complete result and publication qualification |
+The executor MUST reject stale graph, policy, event, repository, authorization, or epoch coordinates. Attempts outside the grant MUST be rejected and recorded. Object construction and authoritative reference movement remain separate privileges.
 
-An effectful or publication operation MUST NOT execute merely because an upstream reactive value changed.
+## 14. Authorization decision and continuous posture
 
-## 14. Authorization model
+### 14.1 Formal authorization
 
-Authorization is model-native operation admission, not only endpoint ACL evaluation.
+Formal authorization and risk acceptance belong to an accountable organizational authority and are represented in governed authorization records. CUE may verify their structure, scope, identity, conditions, and applicability; it does not invent the decision.
+
+### 14.2 Continuously derived posture
+
+The controller continuously derives the technical posture under the current formal authorization.
 
 ```cue
-#AuthorizationContext: {
-	actor:            #ActorReference
-	operation:        #OperationReference
-	subjects:         [...#GraphIdentity]
-	lifecycleState:   #StateConstraint
-	contractRevision: #AuthoritativeReference
-	input:            _
-	requestedEffects: [...#Effect]
-	executionContext: #ExecutionContext
-}
+#AuthorizationPostureState:
+    "authorized" |
+    "conditional" |
+    "suspended" |
+    "revoked" |
+    "indeterminate"
+
+#AuthorizationPosture: close({
+    subjectRef:          #Reference
+    graphRevision:       #Digest
+    policyRevision:      #Digest
+    kernelRevision:      #Digest
+    eventCutoff:         #EventPosition
+    authorizationRef:    #Reference
+
+    state: #AuthorizationPostureState
+
+    satisfiedControlRefs: [...#Reference]
+    blockingFindingRefs:  [...#Reference]
+    openRiskRefs:         [...#Reference]
+    expiringEvidenceRefs: [...#Reference]
+    activeConditionRefs:  [...#Reference]
+    continuityGapRefs:    [...#Reference]
+
+    delegatedEnvelope: #CapabilityEnvelope
+    derivedBy:         #QualifiedProcedureReference
+    receipt:           #AssessmentInvocationReceipt
+})
 ```
 
-Authorization answers:
+A posture may transition continuously, for example:
 
-> May actor A invoke operation O against subjects S, under contract revision C, from lifecycle state L, with input I, producing only effects E in execution context X?
+```text
+authorized  + forbidden mutation      → suspended
+authorized  + evidence expiry         → conditional or indeterminate
+conditional + qualified remediation   → authorized
+any posture + unresolved continuity gap → indeterminate or suspended
+formal revocation                     → revoked
+```
 
-Role permission is necessary but not sufficient. Transition validity, evidence, continuity, and effect bounds are independently necessary.
+The posture constrains the next operation and delegated envelope. It does not replace the formal authorization record.
 
 ## 15. Evidence and provenance boundary
 
 Raw output becomes evidence only through explicit binding and qualification.
 
 ```text
-raw execution output
-    ↓ bind producer, subject, source, contract, toolchain, epochs, and digest
-candidate OSCAL observation
-    ↓ semantic and evidence qualification
-qualified evidence
-    ↓ lifecycle construction
-Assessment Results / finding / risk / remediation evidence
+raw source record
+    → immutable source reference and digest
+    → deterministic normalization
+    → graph subject and claim binding
+    → qualified assessment procedure
+    → concrete assessment invocation receipt
+    → observation, finding, risk, remediation, or posture fact
 ```
 
-A candidate observation MUST be bindable to:
+Every evidence item SHOULD bind producer, subject, claim, graph revision, policy revision, kernel revision, event cutoff, procedure qualification, concrete invocation, toolchain, source bytes, artifact digests, trust epoch, and retention status.
 
-- proposal and decision digests;
-- operation identity;
-- actor, evaluator, and executor identities;
-- authority context;
-- source and contract revisions;
-- toolchain identity;
-- trust and execution epochs;
-- artifact digests;
-- trace or receipt identity.
+### 15.1 Procedure qualification
 
-No component may manufacture an observation or reinterpret unavailable evidence merely to satisfy closure.
+Second-order evidence answers: **Is this assessment procedure trustworthy for this bounded domain?**
 
-## 16. System B runtime telemetry and streaming analytics
+```cue
+#AssessmentProcedureQualification: close({
+    procedureRevision: #Digest
+    semanticRelation:  #Reference
+    evaluatorIdentity: #Digest
+    generatorRevision: #Digest
+    propertySetDigest: #Digest
+    witnessSetDigest:  #Digest
+    mutationSetDigest: #Digest
+    negativeSetDigest: #Digest
+    outcome: "qualified" | "qualified-with-limitations" | "not-qualified"
+    limitations: [...string]
+    receiptDigest: #Digest
+})
+```
 
-System B requires a session-scoped telemetry plane between raw Codex execution and authoritative CUE/parent composition.
+### 15.2 Concrete assessment invocation
+
+First-order evidence answers: **What did the qualified procedure conclude for this subject, graph revision, and event window?**
+
+A qualification receipt MUST NOT substitute for a concrete assessment receipt. A successful invocation MUST NOT qualify its own procedure.
+
+## 16. Continuous OSCAL ATO semantic graph and reactive DAG
+
+This section defines the architectural center omitted by a telemetry-only design.
+
+### 16.1 Continuous evaluation loop
+
+```text
+new source record or scheduled time boundary
+    → immutable raw-record capture
+    → canonical semantic event proposal
+    → event admission and deterministic graph fold
+    → graph revision advances
+    → DuckDB revision-bound relations update
+    → Marimo invalidates affected descendants
+    → affected metrics and windows recompute
+    → qualified assessment procedures execute
+    → observations, findings, risks, and POA&M obligations update
+    → authorization posture and delegated envelope update
+    → affected OSCAL lifecycle projections refresh
+    → next bounded operation is evaluated against the new posture
+```
+
+This loop operates continuously even when no mutation is authorized. Observation, assessment, posture derivation, and projection are distinct from actuation.
+
+### 16.2 Streaming evaluation classes
+
+The continuous evaluator MUST support four classes without creating different semantic kernels.
+
+#### Stateless evaluation
+
+One admitted event contains sufficient facts for a conclusion, such as a forbidden mutation attempt or malformed authoritative record.
+
+#### Keyed stateful evaluation
+
+Evaluation accumulates state keyed by component, control, objective, evidence requirement, repository, actor, operation, finding, risk, POA&M item, authorization package, or other closed subject identity.
+
+#### Windowed evaluation
+
+Policies may operate over event time, processing time, or explicit graph/event ranges, including:
+
+- evidence not supplied before a deadline;
+- evidence nearing or passing expiry;
+- vulnerability or finding not remediated within its allowed interval;
+- repeated denied or failed transitions;
+- excessive correction attempts;
+- stale policy or procedure execution;
+- unclosed tool requests or claims;
+- recurring state oscillation;
+- sustained metric threshold violation.
+
+Window definitions, watermark policy, late-event policy, and correction semantics MUST be explicit and revisioned.
+
+#### Lifecycle and sequence evaluation
+
+The evaluator MUST verify valid state paths, for example:
+
+```text
+declared → implemented → evidenced → assessed → authorized
+```
+
+An event attempting to skip required states MUST be denied or produce an indeterminate conclusion. The lifecycle is a CUE relation over typed graph states, not an independently authored Python or SQL state machine.
+
+### 16.3 Qualified dynamic DAG
+
+The Marimo DAG itself is a qualified artifact. Every node MUST declare:
+
+- closed input and output contracts;
+- semantic or mechanical role;
+- source and revision dependencies;
+- preconditions and postconditions;
+- deterministic identity;
+- idempotency or compensation behavior;
+- timeout, retry, failure, and partial-output semantics;
+- whether it may publish a projection, propose an effect, or only observe.
+
+Every edge MUST declare:
+
+- producer/consumer compatibility;
+- cardinality and ordering;
+- stale, missing, duplicate, delayed, conflicting, and late-event behavior;
+- revision and migration compatibility;
+- invalidation propagation.
+
+No node publishes merely because it ran. Authority-bearing output publishes only when input proofs, transformation properties, output assertions, procedure qualification, and execution receipt all qualify.
+
+### 16.4 Marimo continuous DAG topology
+
+The canonical workbook SHOULD expose this dependency topology:
+
+```text
+event segment and graph-checkpoint cursor
+    → source integrity and complete-record validation
+    → canonical event normalization and admission
+    → deterministic graph-fold request
+    → graph revision and changed-subject set
+    → DuckDB incremental materialization
+    → affected keyed state and temporal windows
+    → due assessment-procedure invocations
+    → CUE assessment conclusions and receipts
+    → observations, findings, risks, and POA&M deltas
+    → authorization-posture derivation
+    → delegated-envelope derivation
+    → OSCAL projection manifests and previews
+    → settlement and review blockers
+```
+
+Representative live cells SHOULD expose:
+
+- current graph, policy, kernel, procedure-set, repository, and event-cutoff identities;
+- segment integrity and incomplete-tail status;
+- changed and affected graph subjects;
+- control applicability and implementation state;
+- evidence freshness and missing evidence;
+- current metric windows and violations;
+- due, running, failed, stale, and completed assessment invocations;
+- findings, risks, POA&M deadlines, and remediation candidates;
+- System A and System B conclusions with separate provenance;
+- current authorization posture and delegated envelope;
+- OSCAL projection receipts and structural-validation status;
+- unresolved conflicts, gaps, stale descendants, and settlement blockers.
+
+Interactive and browserless execution MUST use the same DAG and produce equivalent revision-bound results.
+
+### 16.5 Deterministic transition kernel
+
+Marimo, DuckDB, or a production streaming runtime MAY schedule evaluation, retain keyed state, manage watermarks, and select affected procedures. The actual graph transition, procedure relation, posture derivation, and lifecycle conclusion MUST use the same pinned CUE/Go kernel.
+
+A future Flink-, Spark-, Storm-, or equivalent runtime MAY replace scheduling mechanics only if batch, incremental, replay, and Marimo results remain equivalent over the qualified corpus.
+
+### 16.6 Continuous metrics
+
+A metric is a typed graph projection with an explicit subject, formula, source set, window, cutoff, policy revision, and receipt. A metric threshold breach is evidence for an assessment procedure; it is not itself an authorization decision unless the governing CUE relation explicitly derives the corresponding posture transition.
+
+### 16.7 Continuous OSCAL projection
+
+After each settled graph revision, only affected OSCAL projections need recomputation. The projector MUST preserve stable OSCAL UUIDs, source links, graph/event coordinates, and prior artifact lineage. A continuously updated Assessment Results or POA&M artifact is a lifecycle view of graph state, not the raw event journal.
+
+### 16.8 Continuous ATO completion gate
+
+The architecture MUST NOT be described as continuous ATO until the following are implemented and qualified:
+
+```text
+one shared semantic graph
+∧ immutable event segments and graph checkpoints
+∧ deterministic batch/incremental graph fold
+∧ qualified assessment procedures
+∧ stateless, keyed, windowed, and lifecycle evaluation
+∧ revision-bound DuckDB materialization
+∧ qualified Marimo dynamic DAG
+∧ findings, risks, POA&M, and evidence-freshness advancement
+∧ continuously derived authorization posture
+∧ delegated-envelope enforcement
+∧ continuous OSCAL projection receipts
+∧ replay, restart, late-event, conflict, and stale-procedure tests
+```
+
+## 17. System B runtime telemetry and hook reconciliation
+
+System B runtime telemetry is one source branch feeding the continuous graph. It is not the architecture's semantic center.
 
 ```text
 Codex rollout JSONL ───────────────────────────────┐
-                                                  │
 PreToolUse/PostToolUse provisional ingress ───────┤
-                                                  ├─→ rollout-controller Marimo DAG
-operation-controller records and receipts ────────┤          │
-                                                  │          ▼
-target-workbook observations ─────────────────────┘    DuckDB projection
-                                                             │
-                                                             ▼
-                                                   closed CUE subjects
-                                                             │
-                                                             ▼
-                                              readiness / continuity /
-                                              conformance / attribution
+operation-controller request/claim/receipt ────────┤
+target-workbook observations ──────────────────────┤
+parent decisions and capability grants ────────────┘
+                         ↓
+          deterministic source normalization
+                         ↓
+          canonical System B event proposals
+                         ↓
+             graph-transition admission
 ```
 
-### 16.1 Source authority and precedence
+### 17.1 Source precedence
 
-The telemetry plane MUST preserve four distinct source classes:
+1. The committed complete prefix of the host rollout is the primary host runtime record.
+2. Operation-controller request, binding, claim, release, and receipt records are controller-side execution evidence.
+3. Hook ingress is provisional low-latency evidence.
+4. Canonical graph events exist only after reconciliation and admission.
+5. DuckDB and Marimo views remain rebuildable projections.
 
-1. **Codex rollout committed prefix** — primary System B runtime ledger.
-2. **Operation-controller records** — authoritative controller-side request, binding, claim, release, and terminal receipt evidence.
-3. **Hook ingress** — provisional low-latency `PreToolUse` and `PostToolUse` observations.
-4. **DuckDB and Marimo projections** — disposable, reconstructable materializations.
+### 17.2 Complete-prefix contract
 
-A hook observation MUST NOT silently become the canonical runtime event merely because it arrived first. A successful hook-local decision MUST NOT establish governed admission. A positive post-hook result MUST NOT establish conformance, attribution, settlement, or authorization.
-
-### 16.2 Committed-complete-prefix contract
-
-The rollout controller MUST ingest only complete JSONL records from an immutable identified prefix.
+The reader MUST stop at the final complete newline-delimited record, retain exact byte ranges and raw digests, detect replacement/truncation/rotation, advance its cursor only after durable ingestion, and close or suspend continuity on unexplained discontinuity.
 
 ```cue
 #RolloutPrefix: close({
-	path: string & != ""
-
-	sourceIdentity: close({
-		device?:    uint
-		inode?:     uint
-		generation: string & != ""
-	})
-
-	byteStart: uint
-	byteEnd:   uint
-
-	lastCompleteRecordEnd: uint
-	recordCount:           uint
-
-	prefixDigest:         #Digest
-	previousPrefixDigest?: #Digest
-
-	completeLinesOnly: true
+    sourceIdentity: string & != ""
+    generation:     string & != ""
+    byteStart:      uint
+    byteEnd:        uint
+    completeEnd:    uint
+    recordCount:    uint
+    prefixDigest:   #Digest
+    previousDigest?: #Digest
+    completeLinesOnly: true
 })
 ```
 
-The reader MUST:
-
-- stop at the last complete newline-delimited record;
-- retain byte ranges and raw digests for every record;
-- detect source replacement, truncation, rotation, or incompatible generation change;
-- advance its cursor atomically only after durable materialization succeeds;
-- produce the same projection when replaying the same prefix;
-- close the current continuity epoch on an unexplained source discontinuity.
-
-A trailing partial line MUST remain unconsumed and MUST NOT influence a control conclusion.
-
-### 16.3 Raw-record and normalized-event identity
-
-```cue
-#RawRuntimeRecord: close({
-	source: "codex-rollout" | "pre-hook" | "post-hook" |
-		"operation-controller" | "target-workbook"
-
-	sourceIdentity: string & != ""
-	byteStart?:     uint
-	byteEnd?:       uint
-	lineNumber?:    uint
-
-	rawDigest: #Digest
-	payload:   _
-})
-
-#RuntimeStage:
-	"proposed" |
-	"pre-observed" |
-	"dispatched" |
-	"started" |
-	"returned" |
-	"failed" |
-	"cancelled" |
-	"indeterminate"
-
-#NormalizedRuntimeEvent: close({
-	eventID: string & != ""
-
-	sessionID: string & != ""
-	turnID?:   string & != ""
-	toolUseID?: string & != ""
-
-	stage: #RuntimeStage
-
-	proposedAction?:  #CanonicalAction
-	effectiveAction?: #CanonicalAction
-
-	sourceRefs: [#RawRecordReference, ...#RawRecordReference]
-
-	provisional: bool
-	committed:   bool
-
-	eventDigest: #Digest
-})
-```
-
-Normalization MUST be mechanical, deterministic, versioned, and idempotent. Python, Pydantic, Marimo, and DuckDB MAY frame and correlate records but MUST NOT manufacture semantic readiness, continuity, conformance, attribution, admission, or authorization.
-
-### 16.4 Provisional hook reconciliation
-
-The controller MUST model hook ingress as an overlay on the committed rollout prefix.
+### 17.3 Provisional reconciliation
 
 ```text
-PreToolUse received
-    → provisional-pre
-
-matching rollout proposal committed
-    → pre-reconciled
-
-dispatch/start evidence committed
-    → dispatched
-
-PostToolUse received
-    → provisional-terminal
-
-matching rollout terminal committed
-    → terminal-reconciled
-
-operation-controller receipt bound
-    → effect-correlated
-
-all required identities and records consistent
-    → continuity-preserved
+PreToolUse received              → provisional-pre
+matching rollout proposal        → pre-reconciled
+dispatch/start evidence          → dispatched
+PostToolUse received             → provisional-terminal
+matching rollout terminal        → terminal-reconciled
+controller receipt bound         → effect-correlated
+all identities and records agree → continuity-preserved
 ```
 
-The following cases MUST remain explicit rather than being normalized into success:
+The following remain explicit: unmatched provisional events, coverage gaps, semantic identity conflict, dispatch missing, claim without receipt, terminal conflict, unsupported controlled event, source discontinuity, and late contradictory evidence.
 
-| Condition | Required projection |
-|---|---|
-| Provisional event has no committed counterpart | `pending` or `continuity-indeterminate` |
-| Committed controlled event has no required hook coverage | `coverage-gap` |
-| Same tool-use identity maps to different semantic requests | `identity-conflict` |
-| Terminal hook event lacks qualified dispatch/start evidence | `effect-attribution-unresolved` |
-| Controller claim exists without a terminal receipt | `claimed-without-receipt` |
-| Terminal records disagree | `terminal-conflict` |
-| Rollout source is replaced, truncated, or rebased unexpectedly | `continuity-lost` and a closed epoch |
-| Unknown or unsupported tool event occurs inside required coverage | `coverage-gap` or `indeterminate`, never implicit approval |
+Provisional ingress MAY impose fail-closed restrictions. It MUST NOT expand authority before canonical reconciliation and exact parent composition.
 
-Provisional records MAY support immediate fail-closed restrictions. Expansive authority MUST wait for committed-record reconciliation and exact parent composition.
+### 17.4 System B evidence manifest
 
-### 16.5 DuckDB materialization contract
+The qualified manifest SHOULD bind rollout prefix, canonical-event set, hook overlay, controller records, continuity epoch, pending operations, conflicts, operation base, candidate, procedure identities, projection receipt, and exact graph/policy/event coordinates. Native CUE produces readiness, continuity, conformance, and attribution conclusions from that manifest.
 
-The initial implementation SHOULD expose at least these relations:
+## 18. Settlement
 
-| Relation | Purpose |
-|---|---|
-| `raw_records` | Immutable source coordinates, raw payloads or payload references, and digests |
-| `rollout_prefixes` | Source generation, committed byte cursor, prefix chain, and projection status |
-| `normalized_events` | Mechanically normalized runtime events |
-| `hook_ingress` | Provisional pre/post observations and reconciliation state |
-| `controller_records` | Requests, bindings, claims, releases, and receipts |
-| `action_correlations` | Proposed/effective/dispatch/start/terminal/receipt linkage |
-| `pending_operations` | Operations lacking a qualified terminal state |
-| `continuity_epochs` | Source, hook, controller, and supervision continuity boundaries |
-| `checkpoint_deltas` | Operation-base, prior-settled, candidate, and relevant-state comparisons |
-| `evidence_manifests` | Exact closed facts selected for CUE evaluation |
-| `projection_receipts` | Input prefix, projector identity, schema revision, and output digest |
-
-Incremental ingestion MUST follow one atomic logical transaction:
+Admission to execute is not settlement. Settlement advances the prior-settled checkpoint only when the continuous graph and the bounded operation agree.
 
 ```text
-lock source cursor
-    → identify complete new prefix
-    → hash exact bytes
-    → parse bounded records
-    → insert raw records idempotently
-    → normalize mechanically
-    → reconcile provisional hook ingress
-    → refresh causal, pending, and continuity projections
-    → construct evidence manifest and projection receipt
+candidate operation admitted
+    → effect executed under one-use capability
+    → runtime records reconciled into canonical events
+    → graph revision advances
+    → System A independently recaptured
+    → System B conformance and attribution assessed
+    → affected findings, risks, metrics, and posture recomputed
+    → affected OSCAL projections validated
+    → publication qualification succeeds
+    → prior-settled checkpoint advances
+```
+
+Settlement requires:
+
+- exact operation, graph, policy, event, repository, capability, and epoch identities;
+- required runtime records and receipts;
+- no unresolved identity, continuity, or terminal conflict;
+- current qualified procedures;
+- settled Marimo descendants and DuckDB projection receipt;
+- independently qualified System A outcome and System B conformance;
+- qualified effect attribution;
+- recomputed findings, risks, POA&M, and posture;
+- valid OSCAL projection receipts;
+- successful constrained Git publication.
+
+Possible states SHOULD include `proposed`, `qualified`, `running`, `stale`, `indeterminate`, `failed`, `assessed`, `held`, `settled`, and `published`.
+
+## 19. Reactive playbook model
+
+Playbooks are typed graph-mutation plans, not arbitrary scripts.
+
+A playbook MUST declare:
+
+- selected subjects and graph revision;
+- required control, evidence, and posture predicates;
+- exact nodes and edges to add, remove, or replace;
+- allowed mutation classes;
+- expected metric, finding, risk, or posture consequences;
+- required assessment procedures;
+- failure and compensation semantics;
+- settlement criteria.
+
+DSPy or another model MAY rank only pre-admitted playbooks. It MUST NOT create a new mutation vocabulary, bypass posture constraints, or convert an ineligible plan into an eligible one.
+
+Reactive recomputation MAY construct or reprioritize remediation proposals. A proposal becomes effectful only through the normal transition, authorization, and capability path.
+
+## 20. Failure, correction, extraction, and continuity
+
+Failures are graph facts and event records, not exceptions to governance.
+
+The system MUST distinguish:
+
+- semantic denial;
+- unavailable evaluator or procedure;
+- transport failure;
+- dispatch not observed;
+- execution failure;
+- result conflict;
+- continuity gap;
+- stale graph or projection;
+- effect-attribution uncertainty;
+- target regression;
+- posture suspension or revocation.
+
+A bounded correction MUST change at least one qualified dimension: request, relevant state, graph revision, evidence, procedure, policy, capability, or parent order. Repeating an identical failed operation without new evidence is not progress.
+
+A material objective, topology, accepted-risk, authority, or scope change ends the current operation boundary and requires a fresh qualified order. Knowledge extraction MAY preserve observations, counterexamples, and remediation candidates without carrying forward stale authority.
+
+## 21. Constrained Git mutation and publication boundary
+
+Git performs two distinct roles:
+
+1. immutable identity and storage for source, checkpoints, segments, artifacts, evidence, and receipts;
+2. constrained mutation and publication through explicit capabilities.
+
+The Git adapter MUST separate:
+
+- object construction;
+- index/worktree mutation;
+- commit construction;
+- reference movement;
+- remote publication.
+
+A capability to construct a commit MUST NOT imply authority to move `main`. A capability to update one authorized reference MUST NOT imply arbitrary repository write access.
+
+Publication MUST verify expected current reference, exact new commit, allowed ancestry, authorized target, graph and event coordinates, settlement receipt, and no conflicting concurrent change.
+
+## 22. Supply-chain and evidence services
+
+SBOMs, attestations, provenance, vulnerability intelligence, GUAC, and policy services provide evidence and correlation.
+
+- SBOMs identify components and dependencies.
+- Attestations bind claims to exact subjects and producers.
+- GUAC or equivalent services propose correlations and graph indexes.
+- Vulnerability and policy services produce source-bound observations.
+- Minder or similar engines MAY generate candidate findings or enforcement observations.
+
+No service independently establishes canonical equivalence, control satisfaction, authorization posture, or publication authority. Its output enters the graph through qualified evidence and transition relations.
+
+## 23. Generation and adapter architecture
+
+Generation is one-way from canonical contracts.
+
+```text
+OSCAL identities and lifecycle resources
+        +
+CUE graph, transition, procedure, and operation contracts
+        ↓
+closed intermediate representation
+        ├── Go types and facade bindings
+        ├── Python/Pydantic transport models
+        ├── Hypothesis strategies and mutations
+        ├── JSON Schema/OpenAPI/GraphQL projections
+        ├── CLI and MCP adapters
+        ├── DuckDB DDL and projection bindings
+        └── reports and dashboards
+```
+
+Generated artifacts MUST record source contract revision and generator revision. Hand-edited generated output MUST fail drift checks. Generated validators MAY reject structurally invalid input but MUST revalidate through CUE before an authority-bearing conclusion.
+
+## 24. Python and LLM adapter profile
+
+Python MAY own:
+
+- bounded collection and framing;
+- Pydantic ingress/egress closure;
+- deterministic normalization;
+- Marimo DAG orchestration;
+- DuckDB transactions;
+- source correlation;
+- graph-fold and procedure facade invocation;
+- rendering and diagnostics.
+
+Python MUST NOT own canonical graph semantics, procedure conclusions, posture derivation, authorization, or publication authority.
+
+LLM tooling MAY:
+
+- extract candidate structured records;
+- suggest identity matches;
+- rank admitted playbooks;
+- draft remediation descriptions;
+- summarize evidence and diagnostics.
+
+Every model output MUST be treated as untrusted candidate data, constrained to a closed schema, provenance-bound, and revalidated. Model confidence is not evidence quality.
+
+## 25. Structural validation and compatibility
+
+The system MUST pin and record:
+
+- OSCAL schema and content revisions;
+- CUE language, module, source, and binary revisions;
+- Go facade and build identity;
+- graph and event schema revisions;
+- procedure and property-set revisions;
+- DuckDB schema and projector revisions;
+- Marimo workbook and runtime revisions;
+- generated adapter revisions.
+
+Full OSCAL documents validate through official schemas. Bounded semantic subjects validate through CUE. Compatibility MUST be explicit for graph migrations, event schemas, procedure revisions, projector revisions, and replay across kernel versions.
+
+An incompatible migration MUST produce an explicit unavailable or migration-required state. It MUST NOT silently reinterpret prior evidence or events.
+
+## 26. DuckDB query and materialization plane
+
+DuckDB SHOULD materialize the entire continuous semantic and authorization context, not only tool telemetry.
+
+### 26.1 Required relation families
+
+| Family | Example relations |
+|---|---|
+| Revision and provenance | `graph_revisions`, `graph_checkpoints`, `event_segments`, `events`, `projection_receipts` |
+| OSCAL normative | `catalogs`, `profiles`, `controls`, `control_objectives`, `parameters` |
+| Implementation | `components`, `capabilities`, `subjects`, `resources`, `implementations`, `responsibilities` |
+| Qualification | `procedure_specs`, `qualification_plans`, `qualification_receipts`, `procedure_properties` |
+| Assessment | `assessment_invocations`, `observations`, `objective_results`, `assessment_receipts` |
+| System B runtime | `raw_runtime_records`, `hook_ingress`, `rollout_prefixes`, `controller_records`, `action_correlations`, `continuity_epochs` |
+| Risk and remediation | `findings`, `risks`, `poam_items`, `milestones`, `remediation_deadlines` |
+| Continuous metrics | `metric_definitions`, `metric_samples`, `metric_windows`, `metric_violations` |
+| Authorization | `authorization_decisions`, `authorization_conditions`, `authorization_postures`, `delegated_envelopes` |
+| OSCAL projections | `projection_manifests`, `projection_artifacts`, `validation_receipts` |
+
+Every authority-relevant row MUST be coordinateable to graph revision, policy revision, event cutoff, source identity, and projector revision.
+
+### 26.2 Incremental transaction
+
+```text
+lock current projection cursor
+    → verify checkpoint and segment chain
+    → ingest new immutable records idempotently
+    → request deterministic graph fold
+    → persist new graph revision
+    → compute changed and affected subjects
+    → refresh semantic and temporal relations
+    → refresh keyed and windowed metrics
+    → enqueue due qualified procedures
+    → persist procedure and posture results
+    → persist OSCAL projection manifests
+    → emit projection receipt
     → atomically advance cursor
 ```
 
-Duplicate ingestion MUST be inert. A transaction failure MUST leave the prior cursor and materialization valid. Database corruption or incompatible schema revision MUST force rebuild or an explicit unavailable state; it MUST NOT silently continue from uncertain projections.
+A failure MUST leave the previous cursor and materialization valid. Full rebuild and incremental update MUST be equivalent for the same revision and cutoff. Corruption or incompatible schema requires rebuild or explicit unavailability.
 
-### 16.6 Rollout-controller Marimo DAG
+SQL queries MAY select facts and construct closed CUE subjects. They MUST NOT directly manufacture `satisfied`, `eligible`, `conformant`, `authorized`, `settled`, or equivalent semantic conclusions.
 
-The session-scoped rollout workbook MUST own the reactive dependency topology for:
-
-```text
-source identity
-    → committed-prefix tail
-    → raw-record validation
-    → incremental DuckDB ingestion
-    → provisional hook overlay
-    → action and receipt correlation
-    → continuity projection
-    → checkpoint and delta projection
-    → evidence-manifest construction
-    → native CUE evaluation
-    → parent-composition input
-```
-
-The workbook SHOULD expose:
-
-- source generation, cursor, prefix digest, and incomplete-tail status;
-- raw, committed, provisional, and reconciled event counts;
-- unreconciled or conflicting hook events;
-- pending, abandoned, or claim-without-receipt operations;
-- proposed, effective, dispatched, terminal, and receipted action identities;
-- current continuity epoch and reasons for any gap or loss;
-- operation base, prior settled checkpoint, candidate checkpoint, and deltas;
-- selected evidence-manifest digest;
-- native CUE request, engine identity, raw conclusion, and diagnostics;
-- settlement and parent-composition blockers.
-
-Reactive reruns MUST be idempotent. A source or projection change MAY trigger recomputation, but MUST NOT directly trigger an effectful operation.
-
-### 16.7 System B evidence manifest and semantic conclusion
-
-```cue
-#SystemBEvidenceManifest: close({
-	rolloutPrefix: #RolloutPrefix
-
-	rawRecordSetDigest:      #Digest
-	normalizedEventSetDigest: #Digest
-	actionCorrelationDigest:  #Digest
-	controllerRecordDigest:   #Digest
-
-	continuityEpoch: #ContinuityEpoch
-	pendingOperations: [...#PendingOperationReference]
-	coverageGaps:      [...#CoverageGap]
-	conflicts:         [...#RuntimeConflict]
-
-	operationBase: #RepositorySnapshot
-	priorSettled:  #RepositorySnapshot
-	candidate:     #RepositorySnapshot
-
-	projectionReceipt: #ProjectionReceipt
-})
-```
-
-Native CUE MUST evaluate the closed manifest and produce technical System B conclusions such as readiness, trusted continuity, execution conformance, and effect attribution. DuckDB queries, Python reducers, and Marimo cells MUST NOT own those conclusions.
-
-The parent composition layer MUST bind the exact System B manifest and conclusion digests with System A eligibility, the tactical conclusion, the operation order, and parent authorization. A later successful result MUST NOT retroactively authorize an action initiated without that exact composition.
-
-### 16.8 Completion gate
-
-System B MUST NOT be described as complete until all of the following are implemented and qualified:
+## 27. End-to-end continuous reconciliation loop
 
 ```text
-committed-prefix tailing
-∧ complete-line and source-generation safety
-∧ durable incremental DuckDB projection
-∧ provisional pre/post hook reconciliation
-∧ controller receipt and dispatch correlation
-∧ continuity epochs and gap handling
-∧ closed System B evidence manifests
-∧ native CUE readiness/continuity/conformance/attribution
-∧ exact parent composition
-∧ restart, replay, truncation, conflict, and partial-line tests
+1. Resolve current repository, graph, policy, kernel, procedure, and authorization identities.
+2. Capture new raw records and time boundaries.
+3. Seal or extend the next immutable event segment.
+4. Normalize and reconcile source records into canonical event proposals.
+5. Evaluate event admission through CUE.
+6. Fold accepted events into the next graph revision.
+7. Persist the graph revision and changed-subject set.
+8. Incrementally refresh DuckDB materializations.
+9. Let Marimo invalidate and recompute affected descendants.
+10. Run due qualified assessment procedures.
+11. Advance observations, findings, risks, POA&M, metrics, and posture.
+12. Refresh affected OSCAL lifecycle projections.
+13. Construct eligible bounded transition proposals against the current posture.
+14. Qualify System A, System B, tactical, accountable-condition, and parent inputs.
+15. Issue one narrowed capability.
+16. Execute and collect request, claim, dispatch, terminal, and receipt evidence.
+17. Reconcile execution records into canonical events.
+18. Independently recapture System A and assess System B.
+19. Recompute graph, posture, and OSCAL projections.
+20. Settle and publish only when all required descendants agree.
 ```
 
-## 17. Settlement
-
-Admission to execute is not settlement.
-
-```text
-candidate checkpoint
-    ↓
-transition qualification admitted
-    ↓
-playbook or direct operation executed
-    ↓
-terminal observations collected
-    ↓
-postconditions and evidence qualified
-    ↓
-settlement decision
-    ↓
-authoritative Git publication
-```
-
-A candidate MAY become the next settled checkpoint only when:
-
-```text
-required execution completed
-∧ the relevant rollout prefix is closed and projection-receipted
-∧ required provisional hook ingress is reconciled or explicitly qualified as a gap
-∧ dispatch, terminal records, and controller receipts are correlated
-∧ no unresolved identity or terminal conflicts remain
-∧ Marimo graph is settled when Marimo is involved
-∧ no relevant stale descendants remain
-∧ System B continuity and conformance are qualified by native CUE
-∧ effect evidence and attribution are qualified
-∧ postconditions hold
-∧ continuity remains trusted
-∧ resulting OSCAL closure is admitted
-∧ publication succeeds at the authorized reference
-```
-
-Possible operational states SHOULD include:
-
-```text
-proposed
-qualified
-running
-stale
-suspended
-blocked
-failed
-indeterminate
-continuity-lost
-settlement-pending
-settled
-published
-```
-
-## 18. Reactive playbook model
-
-A playbook is a versioned, CUE-admitted graph-rewrite contract associated with an OSCAL-identified capability or operation. It is not a free-form agent plan.
-
-```cue
-#MutationBase:
-	"operation-base" |
-	"prior-settled" |
-	"candidate"
-
-#GraphMutationKind:
-	"advance" |
-	"insert" |
-	"replace" |
-	"prune" |
-	"fork" |
-	"join" |
-	"suspend" |
-	"resume" |
-	"rebase" |
-	"compensate" |
-	"extract" |
-	"terminate"
-
-#Playbook: {
-	playbookID: string & != ""
-	version:    string & != ""
-
-	applicability: #Predicate
-	base:          #MutationBase
-	mutations:     [...#GraphMutation]
-
-	retains:     [...#NodeSelector]
-	invalidates: [...#NodeSelector]
-	inserts:     [...#NodeTemplate]
-	activates:   [...#NodeSelector]
-	suspends:    [...#NodeSelector]
-
-	authority: #AuthorityEnvelope
-	budgets:   #BudgetRequirements
-
-	requires: [...#Assertion]
-	ensures:  [...#Assertion]
-
-	expectedSettlement: #StateConstraint
-}
-```
-
-### 18.1 Mutation meanings
-
-| Mutation | Meaning |
-|---|---|
-| `advance` | Activate an admitted successor after a completed transition |
-| `insert` | Add evidence, correction, approval, or validation nodes |
-| `replace` | Supersede an invalid future subgraph with an admitted alternative |
-| `prune` | Remove invalid, unauthorized, or unreachable continuation |
-| `fork` | Create bounded parallel branches |
-| `join` | Reconcile branches under an explicit completion rule |
-| `suspend` | Freeze effectful continuation while preserving state |
-| `resume` | Reactivate after qualification |
-| `rebase` | Establish a fresh qualified state anchor and rebuild continuation |
-| `compensate` | Apply corrective effects for a previously settled transition |
-| `extract` | Preserve admissible evidence or products from an incomplete branch |
-| `terminate` | Close the bounded operation with a typed disposition |
+## 28. Minimal vertical slice
 
-### 18.2 Eligibility before ranking
-
-CUE MUST derive the eligible playbook subset before DSPy or a model receives candidates.
-
-Eligibility SHOULD include:
-
-```text
-trigger compatibility
-∧ failure-class compatibility
-∧ objective compatibility
-∧ continuity requirements
-∧ authority envelope
-∧ evidence availability
-∧ epoch compatibility
-∧ budget availability
-∧ permitted graph mutation classes
-```
-
-The exact selected instance MUST be revalidated against the latest immutable checkpoint immediately before graph or source mutation.
-
-### 18.3 Bounded replacement versus material replan
-
-A predefined alternative inside the existing authority envelope MAY be selected as a bounded replacement.
-
-A change to objective, authority, topology, accepted risk, external resources, or execution contract is a material replan and MUST create a new operation boundary.
-
-## 19. Failure, correction, extraction, and continuity
+The first complete slice SHOULD prove one continuous graph advancement and one bounded effect.
 
-Failure handling SHOULD preserve separate outcomes:
+1. Pin OSCAL, CUE, Go facade, graph, event, DuckDB, Marimo, and projector revisions.
+2. Define one control objective, one component implementation, one evidence requirement, and one authorization condition.
+3. Define one shared graph checkpoint and one repository snapshot.
+4. Define and property-qualify one assessment procedure.
+5. Seal one immutable event segment and fold it into a new graph revision.
+6. Materialize the graph and one temporal metric in DuckDB.
+7. Run the same Marimo DAG interactively and browserlessly.
+8. Invoke the qualified procedure and create one assessment receipt.
+9. Derive one finding or satisfied objective and one authorization-posture update.
+10. Render and validate one Assessment Results update and one authorization projection receipt.
+11. Reconcile one pre/post hook pair, rollout record, and controller receipt into one System B canonical event.
+12. Construct and admit one bounded operation against the current posture.
+13. Execute it through a one-use operation-controller capability.
+14. Recapture System A, assess System B, recompute posture, and settle.
+15. Publish through the constrained Git adapter.
+16. Replay from the initial checkpoint and prove identical graph, DuckDB, assessment, posture, OSCAL, decision, and publication identities.
+17. Preserve negative fixtures for malformed event, stale procedure, late conflict, continuity loss, and unauthorized effect.
 
-- objective outcome;
-- correction outcome;
-- extraction outcome;
-- continuation disposition.
-
-A major failure SHOULD follow a typed sequence:
-
-```text
-qualified failure
-    ↓
-invalid continuation pruned or suspended
-    ↓
-corrective playbook
-    ↓
-invariants restored or safe degraded state established
-    ↓
-extraction playbook
-    ↓
-admissible evidence and partial products preserved
-    ↓
-termination or handoff to a fresh operation
-```
-
-Continuity loss MUST suspend automatic effectful continuation. Recovery requires requalification, rebase, or termination.
-
-System B continuity MUST be considered lost or indeterminate when required runtime evidence cannot be reconstructed, including unexplained rollout truncation or replacement, a committed/provisional identity conflict, missing dispatch evidence, a claim without receipt, incompatible terminal records, or an unqualified projection rebuild.
-
-### 19.1 Reference failure scenario: incomplete upstream coverage
-
-A canonical bounded-failure example is an upstream monitor required to classify two independent channels when one exact channel head cannot be established.
+## 29. Proposed implementation stages
 
-```text
-objective
-    classify both required upstream channels
+### Stage 0 — Shared graph vocabulary and authority contracts
 
-qualified failure
-    exact independent channel identity unavailable
-
-invalid continuation
-    complete semantic classification
-    canonical publication
-    latest-pointer advancement
+Freeze nodes, relations, partitions, revisions, procedures, posture states, capabilities, and accountable-authority boundaries.
 
-corrective playbook
-    acquire exact reference evidence through another admitted source
+### Stage 1 — Graph checkpoints and immutable event ledger
 
-extraction playbook
-    retain qualified partial observations and diagnostics
+Implement checkpoint identity, event segments, ordering, chaining, correction events, replay cutoff, and source provenance.
 
-forbidden
-    infer the missing reference
-    manufacture completeness
-    publish a successful canonical bundle
-```
+### Stage 2 — Deterministic CUE/Go transition kernel
 
-An anti-churn evaluator MAY inspect effective semantic action, relevant state, qualified terminal evidence, continuity, and correction/uncertainty budgets. Its conclusion MAY constrain playbook eligibility but MUST NOT independently authorize execution or mutate the operation.
+Implement graph folding, transition admission, changed-subject output, and batch/incremental/replay equivalence.
 
-## 20. Constrained Git mutation and publication boundary
+### Stage 3 — Qualified assessment procedures
 
-Only a constrained Git adapter MAY mutate authoritative repository state.
+Implement procedure specs, property schemes, generated witnesses and mutations, qualification plans, receipts, and concrete invocation contracts.
 
-Its closed vocabulary SHOULD include:
+### Stage 4 — DuckDB semantic and temporal materialization
 
-```text
-read object
-resolve reference
-construct blob
-construct tree
-construct commit
-verify object identity
-update authorized proposal reference
-push authorized branch
-publish authorized pull request
-```
+Implement revision-bound graph relations, keyed state, temporal windows, evidence freshness, findings, risks, POA&M, metrics, posture, and projection receipts.
 
-The adapter MUST:
+### Stage 5 — Qualified continuous Marimo DAG
 
-1. inspect a pinned snapshot;
-2. resolve exact identities;
-3. read affected objects;
-4. construct candidate objects without moving authoritative references;
-5. validate CUE and OSCAL invariants;
-6. run required qualification probes;
-7. construct the candidate commit;
-8. verify the resulting graph and digests;
-9. move only the reference named by the capability;
-10. publish only after publication qualification.
-
-Models, DSPy, Marimo, Minder, GUAC, and generated clients MUST NOT bypass this boundary.
-
-## 21. Supply-chain and evidence services
-
-### 21.1 SBOM
-
-SBOMs are first-class typed implementation evidence. They MAY remain SPDX or CycloneDX artifacts, but their lifecycle MUST be bound into OSCAL subjects and operations.
-
-Representative operations include:
-
-```text
-component.generate-sbom
-component.validate-sbom
-component.compare-sbom
-component.publish-sbom
-component.ingest-sbom
-component.resolve-dependencies
-component.evaluate-vulnerabilities
-component.attest-sbom
-```
-
-An SBOM does not define authorization, transition guards, or controller state.
-
-### 21.2 Attestations
-
-Attestations bind typed claims to immutable subjects and SHOULD include:
-
-```text
-predicate type
-+ subject digest
-+ producer identity
-+ operation identity
-+ source revision
-+ contract revision
-+ execution context
-+ signature or verification material
-```
-
-Attestations supplement Git and OSCAL lifecycle records; they do not replace semantic qualification.
-
-### 21.3 GUAC
-
-GUAC MAY materialize a repository-scoped software and evidence graph for:
-
-- software identity correlation;
-- dependency traversal;
-- provenance and vulnerability queries;
-- attestation discovery;
-- evidence correlation;
-- supply-chain lineage.
-
-GUAC MUST NOT become the semantic, authorization, lifecycle, API, or transition authority.
-
-### 21.4 Minder and policy engines
-
-Minder MAY act as an evaluator and bounded remediation adapter. Its rules and profiles are derived execution configuration. Its results become candidate observations or findings.
-
-Minder MUST NOT independently select authoritative policy, widen scope, establish final OSCAL state, or publish remediation success as verified control effectiveness.
-
-### 21.5 Legacy Apercue disposition
-
-Apercue is not retained as an independent architectural authority. Its responsibilities are normalized as follows:
-
-| Former responsibility | Normalized authority |
-|---|---|
-| Semantic object model | OSCAL |
-| Constraint system | CUE |
-| API contract | Cuestrap Component Definition profile |
-| State history | Git |
-| Artifact identity | Git OIDs and digests |
-| Dependency inventory | SBOM |
-| Provenance and execution claims | Attestations and receipts |
-| Supply-chain graph | GUAC |
-| Query and reporting | Generated or derived projections |
-| Optional semantic-web output | Deterministic projector |
-
-Reusable Apercue projection patterns MAY survive as non-authoritative generators, provided they emit deterministic receipts and cannot redefine canonical identity or semantics.
-
-## 22. Generation and adapter architecture
-
-Generation flows one way:
-
-```text
-Official OSCAL structure
-+ Cuestrap OSCAL profile
-+ CUE semantic contract
-        ├── Go types and interfaces
-        ├── constrained Git clients
-        ├── Python/Pydantic models
-        ├── Hypothesis strategies
-        ├── JSON Schema
-        ├── OpenAPI or GraphQL adapters
-        ├── CLI and MCP tools
-        ├── workflow bindings
-        ├── fixtures and assertions
-        └── documentation
-```
-
-Generated surfaces MAY be lossy. They MUST NOT widen the canonical CUE lattice.
-
-Every generator SHOULD emit a deterministic projection receipt:
-
-```cue
-#ProjectionReceipt: {
-	modelDigest:       #Digest
-	projectorIdentity: string
-	projectorVersion:  string
-	projectorDigest:   #Digest
-	outputTreeDigest:  #Digest
-	byteStable:        bool
-	concrete:          true
-}
-```
-
-## 23. Python and LLM adapter profile
-
-The technology inventory in `awesome-llm-json.md` is normalized into replaceable layers rather than one flat dependency list.
-
-### 23.1 Contract and runtime boundary
-
-```text
-CUE authoritative contract
-    ↓
-JSON Schema or generated Python schema projection
-    ↓
-Pydantic runtime representation
-    ↓
-model-facing adapter
-    ↓
-candidate result
-    ↓
-CUE revalidation
-```
-
-Pydantic validity establishes only Python-boundary validity.
-
-### 23.2 Recommended roles
-
-| Layer | Candidate | Role |
+Implement source, graph-fold, materialization, affected-subject, metric, procedure, posture, and OSCAL-projection cells; qualify node, edge, stale-state, retry, timeout, restart, and browserless equivalence behavior.
+
+### Stage 6 — OSCAL lifecycle and authorization-posture projections
+
+Render Catalog/Profile/Component/SSP/AP/AR/POA&M/authorization projections and enforce the delegated operating envelope.
+
+### Stage 7 — System B rollout and hook reconciliation
+
+Implement complete-prefix tailing, provisional overlays, controller correlation, continuity epochs, canonical event admission, and qualified System B procedures.
+
+### Stage 8 — Bounded transition and constrained mutation
+
+Implement exact parent composition, capability grants, operation-controller execution, independent System A recapture, settlement, and constrained Git publication.
+
+### Stage 9 — Generated adapters and model integration
+
+Generate transport surfaces and introduce constrained decoding or DSPy only over admitted alternatives.
+
+### Stage 10 — Supply chain and production stream runtime
+
+Add SBOM, attestations, GUAC, optional production streaming runtime, collaboration state, migration tooling, retention, and operational hardening without changing kernel semantics.
+
+## 30. Required conformance properties
+
+The implementation SHOULD make these executable:
+
+1. **Deterministic graph fold** — identical checkpoint, ordered events, policy, procedures, and kernel produce the same graph revision.
+2. **Batch/stream equivalence** — batch replay and incremental streaming produce equivalent graph, metric, procedure, posture, and OSCAL results.
+3. **Event integrity** — missing, duplicate, reordered, conflicting, partial, or unchained events cannot silently advance authority-bearing state.
+4. **One-graph provenance** — System A and System B composition preserves independent source and evidence identity.
+5. **Procedure currentness** — stale, incompatible, unavailable, or unqualified procedures cannot produce authoritative conclusions.
+6. **Procedure/invocation separation** — qualification and concrete operation evidence cannot substitute for one another.
+7. **Incremental/rebuild equivalence** — DuckDB incremental state equals full rebuild for the same revision and cutoff.
+8. **Reactive non-actuation** — no Marimo invalidation, SQL update, metric breach, posture change, or stream event directly performs an effect.
+9. **DAG qualification** — every authority-bearing node and edge satisfies its declared contract.
+10. **DAG settlement** — publication waits for all relevant descendants to be current, qualified, and non-conflicting.
+11. **Posture traceability** — every posture binds exact graph, policy, event, procedure, authorization, finding, risk, condition, and receipt identities.
+12. **Restriction monotonicity** — current qualified restrictive evidence may narrow delegated authority immediately; expansion requires complete qualification.
+13. **No unauthorized mutation** — denied, unavailable, or failed traces leave protected repository and graph state unchanged.
+14. **Freshness enforcement** — stale graph, policy, procedure, event cutoff, posture, repository, or capability invalidates execution.
+15. **Capability confinement** — attempted effects outside the grant are rejected and recorded.
+16. **Evidence non-forgery** — missing, stale, conflicting, or unreconciled evidence cannot become a positive conclusion.
+17. **Continuity safety** — source discontinuity, missing terminal evidence, or restart ambiguity produces a gap, not implicit success.
+18. **OSCAL projection traceability** — every artifact binds graph, policy, event, projector, source-set, and validation receipts.
+19. **Settlement monotonicity** — `priorSettled` advances only after graph, runtime, assessment, posture, projection, and publication settlement.
+20. **Projection rebuildability** — DuckDB, GUAC, Marimo state, reports, and generated artifacts reconstruct from checkpoints and events.
+21. **Negative-witness permanence** — discovered counterexamples remain rejected unless an explicit contract revision reclassifies them.
+22. **Publication isolation** — constructing objects and moving an authoritative reference remain separate privileges.
+
+## 31. Review decisions required
+
+### 31.1 Shared graph vocabulary
+
+Select exact node, relation, partition, extension, and revision conventions for normative, implementation, qualification, System A, System B, and governance facts.
+
+### 31.2 Canonical event ledger
+
+Decide segment size, sequence allocation, digest chaining, source normalization, late-event policy, correction events, checkpoints, compaction, and retention.
+
+### 31.3 Transition-kernel and procedure ABI
+
+Freeze narrow Go/CUE operations for graph fold, event admission, procedure qualification, assessment invocation, posture derivation, changed-subject reporting, and OSCAL projection manifests.
+
+### 31.4 Continuous evaluation runtime
+
+Decide whether Marimo plus DuckDB is sufficient initially or whether a dedicated stream runtime is required for watermarks, partitioned state, event time, windows, and recovery. Any runtime MUST use the same kernel.
+
+### 31.5 DuckDB schema and receipts
+
+Freeze required relations, keys, revision coordinates, transaction boundaries, rebuild rules, corruption recovery, and projection-receipt format.
+
+### 31.6 Dynamic DAG qualification
+
+Define node and edge contracts, invalidation rules, stale-state semantics, retries, timeouts, partial results, and how source changes are proven to match admitted playbooks.
+
+### 31.7 Assessment procedure qualification
+
+Define property corpora, generators, mutations, negative fixtures, evaluator identity, expiry, compatibility, and invalidation rules.
+
+### 31.8 Authorization posture semantics
+
+Define control-satisfaction, evidence-freshness, finding/risk severity, continuity, condition-expiry, and delegated-envelope rules for `authorized`, `conditional`, `suspended`, `revoked`, and `indeterminate`.
+
+### 31.9 OSCAL projection layout
+
+Define repository paths and extension conventions for continuously projected Catalog, Profile, Component, SSP, AP, AR, POA&M, authorization artifacts, and receipts.
+
+### 31.10 Runtime reconciliation
+
+Define which hook, rollout, controller, target, parent, metric, assessment, and posture events become canonical immediately, remain raw evidence, or are summarized in checkpoints.
+
+### 31.11 Capability representation
+
+Choose signed value, content-addressed grant, opaque reference, or attested token representation and freeze exact Git/workbook mutation vocabularies.
+
+### 31.12 Technology profile status
+
+Classify DuckDB, Marimo, optional stream runtimes, GUAC, model frameworks, and adapter libraries as required, reference, optional, or deferred without coupling canonical contracts to replaceable runtimes.
+
+## 32. Source normalization map
+
+| Source | Retained concepts | Normalized disposition |
 |---|---|---|
-| Python schema boundary | Pydantic | Generated types, serialization, runtime validation, editor support |
-| Agent/tool runtime | PydanticAI | Typed tools and output boundary |
-| Single-call extraction | Instructor | Narrow schema-first extraction and corrective retry adapter |
-| LM-program optimization | DSPy | Optimize model-facing implementation among admitted contracts |
-| Provider normalization | LiteLLM or direct provider adapter | Access normalization only, not enforcement |
-| Local structured inference | SGLang with XGrammar or llguidance | Provider/runtime constrained decoding |
-| Optional constrained generation | Outlines or Guidance | Replaceable generation adapter |
-| Telemetry evidence | OpenTelemetry/OpenInference | Trace and model-call evidence projection |
+| `Cuestrap-Unified-Architecture.md` | OSCAL/CUE/Git authority chain, operation contracts, evidence, Git adapter, generation, vertical slice | Retained as repository-governance spine and revised around one continuously evaluated graph |
+| `OSCAL-Native-API-Centric-GitOps-Architecture.md` | Component Definition API profile, OSCAL lifecycle, authorization tuple, GitOps loop, GUAC/SBOM roles | Integrated into lifecycle projections and formal-authorization versus derived-posture distinction |
+| `agentic-pipeline-architecture.md` | Marimo DAG, checkpoints, settlement, playbooks, mutation algebra, DuckDB, DSPy | Expanded from bounded execution into a qualified continuous reactive DAG over graph revisions and temporal materializations |
+| `awesome-llm-json.md` | Schema/runtime taxonomy and replaceable model adapters | Kept subordinate; no framework becomes semantic or authorization authority |
+| Archived continuous-ATO discussions | Shared graph, event-sourced revisions, segmented JSONL, streaming classes, qualified procedures, dynamic DAG, continuous OSCAL projections, authorization posture | Promoted to the architectural center and composed with the existing bounded-operation model |
+| Existing hook/controller implementation | Provisional pre/post ingress, local ledger, one-use binding/claim/receipt | Classified as a partial System B source and execution branch, not the graph or complete continuous ATO plane |
 
-Magentic and BAML SHOULD be studied as function-projection and generated-client references. They SHOULD NOT become parallel schema authorities unless the architecture is deliberately revised.
-
-LangChain, LlamaIndex, Marvin, and similar broad frameworks MAY be integration layers, but SHOULD NOT be core contract dependencies.
-
-Normalization or autocorrection MUST produce a transformation proposal and evidence. It MUST NOT silently convert invalid original output into proof of validity.
-
-### 23.3 External standards and transport profile
-
-External standards MAY be used behind Cuestrap operations without becoming canonical authority:
-
-| Standard/protocol | Normalized role |
-|---|---|
-| CACAO | Playbook and workflow-graph precedent; domain ontology is not adopted wholesale |
-| OpenC2 | Optional cyber-defense actuator transport; not a universal command language |
-| STIX/TAXII | Threat-intelligence evidence representation and exchange |
-| CSAF/VEX | Vulnerability advisory and applicability evidence |
-| SARIF | Analyzer finding interchange |
-| OSLC | Linked lifecycle-resource projection |
-| TOSCA | Topology/deployment adapter when required |
-| XACML | Optional policy-decision adapter; CUE remains admission authority |
-| CloudEvents/CDEvents | Event transport and vocabulary |
-| MCP | Tool/resource/prompt exposure generated from admitted operations |
-| A2A | Remote-agent task and artifact exchange under bounded capabilities |
-| Workflow runtimes | Durable execution adapter when Marimo alone is insufficient |
-
-Transport acceptance or remote-agent completion MUST still return through the same request, capability, receipt, evidence, settlement, and publication contracts.
-
-## 24. Structural validation and compatibility
-
-Official OSCAL validation remains an independent gate.
+## 33. Compact normative formulation
 
 ```text
-pinned NIST Metaschema revision
-    ↓
-official generated schemas and validators
-    ↓
-pinned generated CUE structural package
-    ↓
-hand-authored Cuestrap semantic overlays
-```
-
-Cuestrap-admissible OSCAL is:
-
-```text
-official OSCAL structural validity
-∧ generated CUE structural validity
-∧ Cuestrap profile constraints
-∧ semantic relation closure
-∧ lifecycle invariants
-∧ publication qualification
-```
-
-Generated schema packages MUST NOT be hand-edited.
-
-Validator disagreements MUST be recorded in a compatibility ledger with exact tool and revision identities. They MUST NOT be silently patched at an adapter boundary.
-
-## 25. Query and graph materialization
-
-The semantic graph is derived from OSCAL and qualified evidence relationships.
-
-Representative relations include:
-
-```text
-Control ─requires────────▶ Capability
-Profile ─specializes─────▶ Requirement
-Component ─provides──────▶ Operation
-Operation ─implements────▶ Requirement
-SSP binding ─instantiates▶ Component
-Assessment task ─invokes─▶ Operation
-Observation ─result-of───▶ Invocation
-Finding ─evaluates───────▶ Requirement
-Risk ─derived-from───────▶ Finding
-POA&M item ─selects──────▶ Remediation operation
-SBOM ─describes──────────▶ Component implementation
-Attestation ─asserts-about▶ Artifact or transition
-```
-
-Derived edges MAY be materialized in GUAC or DuckDB. OSCAL UUIDs and Git/digest identities remain authoritative.
-
-DuckDB additionally materializes the System B temporal and causal graph defined in Section 16. Its rows MUST retain raw-source references and projection-receipt identity. GUAC remains the broader software/evidence graph; DuckDB remains the session and historical analytical projection. Neither may substitute local IDs or inferred joins for canonical OSCAL, Git, operation, tool-use, receipt, or digest identity.
-
-## 26. End-to-end reconciliation loop
-
-```text
-1. Resolve repository, rollout source, controller-record, and contract identities.
-2. Tail only the committed complete prefix of the Codex rollout JSONL.
-3. Ingest raw records idempotently and retain exact source coordinates and digests.
-4. Overlay current provisional PreToolUse/PostToolUse ingress.
-5. Correlate proposed, effective, dispatched, started, terminal, and receipted actions.
-6. Materialize DuckDB pending-operation, continuity-epoch, checkpoint, and delta views.
-7. Construct a closed System B evidence manifest and projection receipt.
-8. Evaluate System B readiness, continuity, conformance, and attribution through native CUE.
-9. Observe repository, collaboration, governance, and System A evidence state.
-10. Resolve an immutable Git snapshot and OSCAL closure.
-11. Load the pinned Component Definition API profile and CUE contract.
-12. Derive current lifecycle, target eligibility, and continuity state.
-13. Compare current state with Catalog/Profile requirements and desired OSCAL state.
-14. Receive or construct a candidate request.
-15. Derive the permitted operation or eligible playbook subset.
-16. Permit deterministic, human, or model proposal generation inside that subset.
-17. Normalize, freeze, and digest the proposal.
-18. Construct a candidate checkpoint.
-19. Compose System A eligibility, System B readiness/continuity, tactical conclusion, exact order, and parent authorization.
-20. Deny, suspend, or issue a narrowed capability for the exact bundle and epochs.
-21. Execute through System B and the relevant bounded adapter.
-22. Collect raw outputs, artifacts, traces, hook ingress, controller records, and receipts.
-23. Advance and reconcile the committed rollout prefix.
-24. Rebuild the DuckDB projection and System B evidence manifest.
-25. Bind candidate observations to provenance and evaluate post-operation System B conformance and attribution through CUE.
-26. Validate System A postconditions, invariants, and resulting OSCAL closure.
-27. Evaluate joint settlement.
-28. Construct and verify Git objects through the constrained adapter.
-29. Move only the authorized reference and publish only qualified state.
-30. Advance the settled anchor.
-31. Update disposable GUAC, DuckDB, report, and transport projections.
-```
-
-Control-theoretically:
-
-```text
-reference signal
-    = Catalog/Profile requirements + desired OSCAL state
-
-controller law
-    = Component Definition operations + CUE admission rules
-
-plant
-    = governed repository and collaboration graph
-
-observation
-    = Git state + qualified Assessment Results + supply-chain evidence
-
-error signal
-    = findings + risks + failed constraints + continuity failures
-
-control input
-    = admitted bounded operation
-
-corrective lifecycle
-    = POA&M and corrective playbooks
-
-next authoritative state
-    = validated and published Git commit
-```
-
-## 27. Minimal vertical slice
-
-The first implementation SHOULD prove the complete authority chain and the missing System B telemetry chain with one narrow scenario.
-
-1. Pin one official OSCAL model, Metaschema revision, native CUE engine, and validation toolchain.
-2. Define one Cuestrap Component Definition capability and one operation.
-3. Capture one immutable operation base and one prior-settled checkpoint.
-4. Provide a bounded Codex rollout JSONL fixture containing a proposed action, dispatch/start record, and terminal record.
-5. Tail only its committed complete prefix and preserve byte ranges, generation identity, and prefix digest.
-6. Ingest the prefix into DuckDB and emit a projection receipt.
-7. Inject one provisional `PreToolUse` event and reconcile it with the committed proposal.
-8. Inject one provisional `PostToolUse` event and reconcile it with the committed terminal record.
-9. Bind one operation-controller request, claim, and terminal receipt to the same effective action.
-10. Materialize action correlation, pending-operation, continuity-epoch, checkpoint, and delta views.
-11. Construct one closed System B evidence manifest.
-12. Evaluate readiness and trusted continuity through native CUE.
-13. Construct one bounded transition request and frozen proposal.
-14. Qualify System A eligibility, the tactical conclusion, System B readiness, exact parent authorization, and the complete bundle identity.
-15. Issue one narrowed execution capability.
-16. Execute one bounded operation through the operation-controller workbook.
-17. Advance the rollout prefix, rebuild DuckDB, and evaluate conformance and effect attribution through native CUE.
-18. Emit one execution receipt and one attestation.
-19. Bind one observation into Assessment Results.
-20. Apply one admitted mutation through the constrained Git adapter.
-21. Evaluate settlement and publish only after both systems and the parent composition agree.
-22. Replay the complete slice and verify equivalent identities, projections, conclusions, and resulting state.
-23. Add negative fixtures for a partial trailing JSON line, unmatched post-hook event, claim without receipt, source truncation, and conflicting semantic request identity.
-
-## 28. Proposed implementation stages
-
-### Stage 0 — vocabulary and contract kernel
-
-- Freeze identifiers, digests, references, actors, resource selectors, effects, assertions, evidence references, epochs, runtime stages, correlation states, and dispositions.
-- Establish closed CUE definitions and negative fixtures.
-- Define which OSCAL extension points carry Cuestrap operation-profile data.
-
-### Stage 1 — canonical raw observation
-
-- Implement Git object and repository snapshot observation.
-- Define rollout source generation, complete-prefix, raw-record, hook-ingress, and controller-record identities.
-- Resolve mutable references to immutable identities.
-- Produce deterministic snapshot and raw-prefix digests.
-
-### Stage 2 — System B telemetry and streaming analytics
-
-- Add DuckDB to the locked environment and define versioned migrations.
-- Implement the session-scoped rollout/JSONL Marimo controller workbook.
-- Tail committed complete prefixes with atomic cursor advancement and rotation/truncation handling.
-- Materialize raw, normalized, hook-ingress, controller, action-correlation, pending-operation, continuity, checkpoint, evidence-manifest, and projection-receipt relations.
-- Reconcile provisional pre/post hook events with committed rollout records.
-- Add restart, replay, duplicate, partial-line, conflict, claim-without-receipt, and source-discontinuity tests.
-
-### Stage 3 — native System B conclusions and parent composition
-
-- Construct closed System B evidence manifests.
-- Implement native CUE readiness, continuity, conformance, and effect-attribution relations.
-- Compose System A eligibility, tactical conclusion, System B conclusion, exact order identity, epochs, and parent authorization.
-- Remove positive authorization meaning from provisional Python anti-churn approval paths.
-
-### Stage 4 — operation and transition qualification
-
-- Implement request, proposal, qualification decision, capability, receipt, and settlement contracts.
-- Add official OSCAL validation and CUE semantic closure.
-- Add compatibility-ledger recording.
-
-### Stage 5 — constrained mutation adapter
-
-- Implement object construction and authorized reference update as separate phases.
-- Prove fail-closed behavior under stale source, moved references, invalid postconditions, capability violations, and System B continuity gaps.
-
-### Stage 6 — generated adapters
-
-- Generate Go and Python types.
-- Add Pydantic and Hypothesis surfaces.
-- Add CLI/MCP adapters only after contract parity is tested.
-
-### Stage 7 — reactive execution and playbooks
-
-- Add the bounded Marimo source/DAG adapter.
-- Add closed graph-mutation vocabulary and initial playbook families.
-- Bind candidate/prior-settled/operation-base comparisons to System B checkpoint projections.
-
-### Stage 8 — bounded model integration
-
-- Add provider-native structured output or constrained decoding.
-- Add PydanticAI/Instructor boundaries as appropriate.
-- Add DSPy only after deterministic eligibility, System B evidence, and acceptance metrics exist.
-
-### Stage 9 — evidence, supply chain, and continuous reconciliation
-
-- Add Assessment Results binding, SBOM, attestations, GUAC, telemetry publication, event triggers, collaboration state, pull-request publication, and bounded remediation.
-- Prove every projection is rebuildable from canonical state and raw runtime sources.
-- Keep effect execution explicitly gated; do not map generic reactivity directly to mutation.
-
-## 29. Required conformance properties
-
-The implementation SHOULD make the following properties executable:
-
-1. **No unauthorized mutation** — every failed or rejected trace leaves protected graph state unchanged.
-2. **Snapshot freshness** — a proposal qualified against stale source cannot execute.
-3. **Capability confinement** — attempted effects outside the grant are rejected and recorded.
-4. **Adapter non-widening** — generated Go/Python/JSON surfaces admit no value rejected by the canonical contract for the same operation boundary.
-5. **Identity preservation** — all published artifacts remain traceable to OSCAL UUIDs, contract IDs, Git OIDs, raw source coordinates, operation identities, receipt identities, and digests.
-6. **Evidence non-forgery** — unavailable or provisional evidence cannot be converted into a positive qualified observation.
-7. **Complete-line ingestion** — a partial trailing JSONL record never enters the normalized event set or a control conclusion.
-8. **Cursor monotonicity** — the committed prefix cursor advances only after a complete durable projection transaction.
-9. **Ingestion idempotence** — replaying an identical prefix produces no duplicate semantic events and the same projection digest.
-10. **Source discontinuity safety** — unexplained truncation, replacement, or generation change closes continuity and prevents automatic continuation.
-11. **Hook reconciliation** — a provisional hook event cannot become committed evidence without an identity-consistent rollout counterpart or an explicit qualified gap disposition.
-12. **Dispatch/receipt correlation** — post-hook success without dispatch/start and controller-receipt evidence cannot establish effect attribution.
-13. **Conflict preservation** — mismatched request identities or terminal records remain conflicts and are never resolved by arrival order.
-14. **Restart recovery** — after process restart, the rollout controller reconstructs the same pending, continuity, checkpoint, and evidence-manifest projections from raw sources.
-15. **SQL non-authority** — DuckDB relations and queries cannot encode or publish final semantic admission, readiness, continuity, conformance, attribution, or settlement conclusions.
-16. **Native conclusion binding** — every System B technical conclusion binds an exact evidence-manifest digest, native engine identity, and projection receipt.
-17. **Settlement monotonicity** — `priorSettled` advances only after complete joint settlement.
-18. **Projection rebuildability** — GUAC, DuckDB, reports, and generated artifacts can be reconstructed from canonical inputs and identified raw runtime sources.
-19. **Deterministic projection** — pinned generators and normalizers produce byte-stable outputs or explicit nondeterminism evidence.
-20. **Negative-witness permanence** — discovered counterexamples remain rejected by subsequent revisions unless an explicit contract change reclassifies them.
-21. **Material-replan boundary** — changes outside delegated topology or authority require a new operation.
-22. **Publication isolation** — candidate object construction and authoritative reference movement remain separate privileges.
-
-## 30. Review decisions required
-
-The architecture is coherent only after the following choices are made explicit.
-
-### 30.1 Component Definition operation encoding
-
-Select the exact OSCAL-native encoding convention for:
-
-- operation identity;
-- input/output schema references;
-- read/write selectors;
-- effects;
-- evidence requirements;
-- transition metadata;
-- generated transport hints.
-
-The selected convention SHOULD use official extension points and remain valid under official OSCAL validators.
-
-### 30.2 Canonical state artifact layout
-
-Define where the repository stores:
-
-- desired OSCAL state;
-- candidate proposals;
-- qualification decisions;
-- execution receipts;
-- Assessment Results;
-- POA&M transitions;
-- projection receipts;
-- compatibility-ledger entries.
-
-The layout MUST distinguish canonical lifecycle state from disposable generated output.
-
-### 30.3 Capability representation
-
-Choose whether the narrowed execution capability is represented as:
-
-- a signed CUE/JSON value;
-- a content-addressed Git blob;
-- an in-process opaque capability referencing an immutable grant;
-- an attested short-lived token.
-
-The authoritative grant content MUST remain inspectable and replayable.
-
-### 30.4 Marimo mutation boundary
-
-Define the exact allowed Marimo source transformations and how generated edits are proven to correspond to an admitted playbook instance.
-
-### 30.5 Runtime persistence
-
-Define which runtime events must be committed immediately, batched into decision/settlement receipts, or retained only as raw external artifacts.
-
-### 30.6 Technology profile status
-
-Decide which adapter recommendations are:
-
-- required for the initial implementation;
-- optional reference integrations;
-- explicitly deferred.
-
-The architecture should not couple canonical contracts to a rapidly changing LLM framework.
-
-### 30.7 Rollout source and committed-prefix identity
-
-Define the exact Codex rollout discovery mechanism, source-generation identity, byte-cursor persistence, complete-line boundary, prefix-digest chain, rotation/truncation response, retention policy, and replay contract.
-
-### 30.8 Hook coverage and reconciliation
-
-Define which controlled operations require `PreToolUse`, `PostToolUse`, dispatch/start, terminal, and controller-receipt coverage; the matching keys and semantic-equality rules; timeout and abandonment behavior; and which gaps force `indeterminate` versus `continuity-lost`.
-
-### 30.9 DuckDB schema and lifecycle
-
-Freeze the initial relation schemas, migration policy, raw-payload retention or externalization, database location, concurrency model, transaction boundary, corruption recovery, projection-receipt format, and rebuild procedure.
-
-### 30.10 System B conclusion interface
-
-Define the exact closed manifest consumed by native CUE and the disjoint result domains for readiness, continuity, conformance, and effect attribution. Define how the parent binds those result digests with System A, tactical, order, and authorization identities.
-
-## 31. Source normalization map
-
-| Source document | Retained concepts | Normalized disposition |
-|---|---|---|
-| `Cuestrap-Unified-Architecture.md` | OSCAL/CUE/Git authority chain; System A/B; operation and transition contracts; evidence, Git adapter, GUAC, SBOM, attestations, generation, vertical slice | Used as the principal integration spine; tightened around official OSCAL structure and runtime-plane distinctions |
-| `OSCAL-Native-API-Centric-GitOps-Architecture.md` | Component Definition API thesis; OSCAL lifecycle mapping; authorization tuple; GitOps loop; Minder/GUAC/SBOM roles | Merged into the canonical domain, authorization, and service-adapter sections; overlapping text removed |
-| `agentic-pipeline-architecture.md` | Marimo DAG authority; rollout/JSONL observation plane; operation base/prior settled/candidate anchors; two-phase decisions; settlement; playbooks; graph mutation algebra; DSPy ranking; DuckDB streaming projections | Integrated as the System B runtime telemetry and subordinate reactive execution protocol inside the OSCAL/CUE/Git authority model; committed-prefix, hook-reconciliation, DuckDB, continuity, and evidence-manifest contracts made explicit; unexplained “AOT” term replaced by Transition Qualification Decision |
-| `awesome-llm-json.md` | Schema/runtime taxonomy; Pydantic, PydanticAI, Instructor, DSPy, constrained decoding, provider runtimes, generated-client references | Converted from ecosystem review into a replaceable adapter profile; no listed framework is canonical authority |
-
-## 32. Compact normative formulation
-
-```text
-Every governed capability is identified in OSCAL.
-Every callable operation is defined by the Cuestrap Component Definition profile.
-Every authoritative constraint and relation is executable through CUE.
-Every request begins from an immutable Git snapshot.
-Every System B runtime conclusion begins from an identified committed-complete rollout prefix.
-Every PreToolUse and PostToolUse observation remains provisional until reconciled or explicitly qualified as a gap.
-Every operation correlation preserves proposed, effective, dispatch, terminal, and receipt identities.
-Every DuckDB and Marimo projection is receipt-bound, rebuildable, and semantically subordinate.
-Every System B readiness, continuity, conformance, and attribution conclusion is evaluated by native CUE over a closed evidence manifest.
-Every proposal is frozen and digested before qualification.
+There is one shared typed semantic graph.
+Every authority-bearing state is identified by graph, policy, kernel, procedure, event, and source revisions.
+Every causal change enters through an immutable ordered event.
+Every graph transition is applied by the pinned deterministic CUE/Go kernel.
+Every live assessment uses a currently qualified procedure.
+Every System A and System B fact retains independent provenance.
+Every DuckDB relation, Marimo value, metric, index, report, and transport is rebuildable.
+Every reactive DAG node and edge has a qualified contract.
+Every reactive recomputation is non-effectful by default.
+Every finding, risk, POA&M obligation, control conclusion, and posture change is receipted.
+Every OSCAL artifact is a validated projection of an exact graph and event cutoff.
+Every continuously derived posture enforces, but does not replace, accountable authorization and risk acceptance.
 Every model sees only a pre-admitted alternative space.
-Every effect is bound to a narrowed capability.
-Every raw observation is provenance-bound before becoming evidence.
-Every accepted result satisfies official OSCAL structure, CUE semantics,
-postconditions, invariants, evidence closure, and publication policy.
-Every authoritative mutation passes through the constrained Git adapter.
-Every settled state is committed and content-addressed.
-Every analytical, graph, model, and transport surface is rebuildable and subordinate.
+Every effect is bound to a narrowed one-use capability.
+Every runtime action is reconciled across required rollout, hook, controller, parent, and target evidence.
+Every settled state composes target outcome, execution conformance, effect attribution, posture, OSCAL projection, and publication qualification.
 No derived component becomes a parallel authority.
 ```
 
-## 33. Proposed decision
+## 34. Proposed decision
 
-Adopt this document as the architecture-review baseline, then split implementation contracts from it in the following order:
+Adopt this document as the architecture-review baseline with **continuous OSCAL ATO as the organizing center**.
 
-1. repository snapshot, rollout source-generation, committed-prefix, raw-record, and controller-record identity contracts;
-2. rollout/JSONL normalization, provisional hook reconciliation, DuckDB relation, cursor, and projection-receipt contracts;
-3. System B evidence-manifest and native CUE readiness/continuity/conformance/attribution contracts;
-4. exact parent composition contract across System A, System B, tactical conclusion, order revision, bundle identity, and authorization;
-5. Component Definition operation profile;
-6. transition request/proposal/decision/capability/receipt contract;
-7. constrained Git mutation contract;
-8. evidence and joint-settlement contract;
-9. reactive playbook and Marimo mutation contract;
-10. generated adapter and model-runtime profiles.
+Implementation SHOULD proceed in this order:
 
-This ordering closes the missing runtime observation and continuity plane before the architecture claims governed execution, settlement, or continuous reconciliation.
+1. shared semantic graph vocabulary and revision identity;
+2. immutable event-segment and graph-fold contract;
+3. qualified assessment-procedure and invocation contract;
+4. DuckDB semantic/temporal materialization and projection receipts;
+5. qualified Marimo continuous-DAG contract;
+6. OSCAL lifecycle projection and authorization-posture contract;
+7. System B rollout/hook/controller reconciliation contract;
+8. bounded transition, parent composition, capability, receipt, settlement, and constrained Git mutation contract;
+9. generated adapter, supply-chain, query, and model-runtime profiles.
+
+This ordering establishes the continuously evaluated semantic and authorization system before treating runtime hooks, notebooks, databases, or probabilistic proposal machinery as complete governance.
