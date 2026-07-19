@@ -1,12 +1,11 @@
 # Schema reference:
 # https://learn.chatgpt.com/docs/config-schema.json
+# Execution boundaries live in $CODEX_HOME/{out-of-band,workbook}.config.toml.
+# Select one with `codex --profile <name>`.
 
 [shell_environment_policy]
 inherit = "all"
 exclude = ["PYTHONHOME"]
-
-[features]
-shell_tool = false
 
 [[hooks.PreToolUse]]
 matcher = "^(Bash|tool_exec|apply_patch|Edit|Write|mcp__git_mcp_server__.*|mcp__cue_lsp__.*|mcp__gopls__.*|mcp__marimo_code_mode__.*|mcp__workbook__.*)$"

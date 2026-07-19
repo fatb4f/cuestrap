@@ -27,6 +27,7 @@ src/cue-workbook/cue_native/
 *.pyd
 runner/bin/
 runner/go.sum
+/dist/
 
 # --- legacy local compatibility checkouts ---
 .cue-py/
