@@ -1,5 +1,6 @@
 name: Apply continuous OSCAL ATO proposal
 
+# One-time guarded proposal transformation.
 on:
   push:
     branches: [main]
