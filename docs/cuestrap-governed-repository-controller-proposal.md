@@ -24,6 +24,21 @@ The architecture separates authority from execution:
 - **System B** proposes, observes, evaluates, and executes only through an admitted bounded capability.
 - **Marimo** owns the live reactive Python DAG; DuckDB, GUAC, generated types, policy engines, and LLM runtimes remain projections or bounded adapters.
 
+### Implementation status boundary
+
+The repository currently implements only a **partial System B foundation**:
+
+| Implemented on `main` | Required before System B is complete |
+|---|---|
+| Main target workbook and typed workbook adapter | Session-scoped rollout/JSONL controller workbook |
+| One-operation Marimo controller with identity-bound request, claim, release, and receipt records | Committed-complete-prefix tailing of the Codex rollout JSONL |
+| `PreToolUse` and `PostToolUse` hook ingress with local pre/post correlation for recognized calls | Reconciliation of provisional hook ingress with committed rollout records |
+| Hook-local `state.json` and diagnostic `events.jsonl` ledger | DuckDB raw, normalized, causal, continuity, checkpoint, and evidence-manifest projections |
+| Provisional Python anti-churn predicates | Native CUE System B readiness, continuity, conformance, and effect-attribution conclusions |
+| Typed operation execution through a bounded workbook capability | Exact parent composition of System A, System B, tactical, and authorization conclusions |
+
+The hook-local ledger MUST be treated as provisional diagnostic evidence. It MUST NOT be described as the Codex rollout ledger, a complete streaming analytics implementation, or a complete System B control plane.
+
 The governing control loop is:
 
 ```text
@@ -60,29 +75,30 @@ This document specifies that authority allocation, the operation and transition 
 - [13. Effect model](#13-effect-model)
 - [14. Authorization model](#14-authorization-model)
 - [15. Evidence and provenance boundary](#15-evidence-and-provenance-boundary)
-- [16. Settlement](#16-settlement)
-- [17. Reactive playbook model](#17-reactive-playbook-model)
-- [18. Failure, correction, extraction, and continuity](#18-failure-correction-extraction-and-continuity)
-- [19. Constrained Git mutation and publication boundary](#19-constrained-git-mutation-and-publication-boundary)
+- [16. System B runtime telemetry and streaming analytics](#16-system-b-runtime-telemetry-and-streaming-analytics)
+- [17. Settlement](#17-settlement)
+- [18. Reactive playbook model](#18-reactive-playbook-model)
+- [19. Failure, correction, extraction, and continuity](#19-failure-correction-extraction-and-continuity)
+- [20. Constrained Git mutation and publication boundary](#20-constrained-git-mutation-and-publication-boundary)
 
 ### Services, projections, and adapters
 
-- [20. Supply-chain and evidence services](#20-supply-chain-and-evidence-services)
-- [21. Generation and adapter architecture](#21-generation-and-adapter-architecture)
-- [22. Python and LLM adapter profile](#22-python-and-llm-adapter-profile)
-- [23. Structural validation and compatibility](#23-structural-validation-and-compatibility)
-- [24. Query and graph materialization](#24-query-and-graph-materialization)
+- [21. Supply-chain and evidence services](#21-supply-chain-and-evidence-services)
+- [22. Generation and adapter architecture](#22-generation-and-adapter-architecture)
+- [23. Python and LLM adapter profile](#23-python-and-llm-adapter-profile)
+- [24. Structural validation and compatibility](#24-structural-validation-and-compatibility)
+- [25. Query and graph materialization](#25-query-and-graph-materialization)
 
 ### Delivery and review
 
-- [25. End-to-end reconciliation loop](#25-end-to-end-reconciliation-loop)
-- [26. Minimal vertical slice](#26-minimal-vertical-slice)
-- [27. Proposed implementation stages](#27-proposed-implementation-stages)
-- [28. Required conformance properties](#28-required-conformance-properties)
-- [29. Review decisions required](#29-review-decisions-required)
-- [30. Source normalization map](#30-source-normalization-map)
-- [31. Compact normative formulation](#31-compact-normative-formulation)
-- [32. Proposed decision](#32-proposed-decision)
+- [26. End-to-end reconciliation loop](#26-end-to-end-reconciliation-loop)
+- [27. Minimal vertical slice](#27-minimal-vertical-slice)
+- [28. Proposed implementation stages](#28-proposed-implementation-stages)
+- [29. Required conformance properties](#29-required-conformance-properties)
+- [30. Review decisions required](#30-review-decisions-required)
+- [31. Source normalization map](#31-source-normalization-map)
+- [32. Compact normative formulation](#32-compact-normative-formulation)
+- [33. Proposed decision](#33-proposed-decision)
 
 ## 1. Proposal
 
@@ -353,12 +369,16 @@ System A owns:
 
 System A MUST be the only plane that can publish a candidate result as authoritative repository state.
 
-### 9.2 System B — proposal, observation, evaluation, and bounded execution plane
+### 9.2 System B — proposal, telemetry, evaluation, and bounded execution plane
 
 System B owns:
 
-- candidate proposals;
-- bounded playbook instantiations;
+- candidate proposals and bounded playbook instantiations;
+- the session-scoped runtime observation plane;
+- mechanically normalized Codex rollout records;
+- provisional hook-ingress reconciliation;
+- dispatch, terminal-result, and operation-receipt correlation;
+- pending-operation, continuity-epoch, and execution-conformance projections;
 - test and assessment execution;
 - evidence collection;
 - remediation execution under granted capability;
@@ -366,18 +386,43 @@ System B owns:
 - execution receipts;
 - candidate resulting state.
 
+System B runtime evidence MUST preserve this source hierarchy:
+
+```text
+Codex rollout JSONL committed complete prefix
+    = primary System B runtime ledger
+
+operation-controller request, binding, claim, release, and receipt records
+    = authoritative controller-side execution records
+
+PreToolUse and PostToolUse hook ingress
+    = provisional low-latency observations pending reconciliation
+
+DuckDB relations and Marimo values
+    = reconstructable analytical projections
+```
+
 System B MUST NOT:
 
 - redefine policy or contract meaning;
 - widen its capability;
 - repair or manufacture evidence to satisfy closure;
+- promote provisional hook ingress into committed runtime truth without reconciliation;
 - mutate protected state outside the grant;
 - publish authoritative state;
-- treat raw output as qualified evidence.
+- treat raw output or a DuckDB query result as qualified evidence.
 
-### 9.3 Marimo — live reactive execution plane
+### 9.3 Marimo — live reactive execution and inspection plane
 
-Marimo is authoritative for the actual live Python dependency graph it constructs:
+The architecture uses three distinct Marimo lifetimes:
+
+| Workbook | Lifetime | Responsibility |
+|---|---|---|
+| Main CUEstrap workbook | Long-lived | System A target, implementation, and interactive experiment surface |
+| Rollout/JSONL controller workbook | Session- or rollout-scoped | System B committed-prefix ingestion, hook reconciliation, DuckDB projection, continuity, and evidence-manifest construction |
+| Operation-controller workbook | One bounded action | Identity-bound pre-state, one-use effect, post-state, and durable execution receipts |
+
+Marimo is authoritative for the actual live Python dependency graphs it constructs:
 
 - cell dependency analysis;
 - invalidation;
@@ -386,29 +431,35 @@ Marimo is authoritative for the actual live Python dependency graph it construct
 - stale-state propagation;
 - graph settlement.
 
+The rollout controller MUST be reconstructable from the committed raw source prefix, its qualified workbook revision, controller receipts, and projection receipts. The main workbook MUST NOT supervise or authorize its own mutations. The operation workbook MUST remain one-use and capability-bound.
+
 Marimo is not authoritative for:
 
 - governance semantics;
 - operation admission;
 - actor authorization;
 - evidence qualification;
+- System B readiness, continuity, conformance, or effect-attribution conclusions;
 - Git publication.
 
 A CUE-admitted playbook MAY compile to a bounded Marimo source mutation. Marimo then reconstructs and executes the resulting DAG.
 
-### 9.4 DuckDB — analytical projection plane
+### 9.4 DuckDB — required System B analytical materialization
 
-DuckDB MAY maintain streaming and historical projections of:
+The first complete System B implementation MUST use DuckDB to maintain incremental, queryable projections of:
 
-- runtime observations;
-- state deltas;
-- evidence prefixes;
-- budgets;
-- evaluation corpora;
-- transition histories;
-- settlement metrics.
+- immutable raw-record coordinates and digests;
+- committed rollout prefixes and source generations;
+- mechanically normalized runtime events;
+- provisional hook ingress and reconciliation status;
+- proposed, effective, dispatched, terminal, and receipted action correlations;
+- pending and abandoned operations;
+- continuity and trust epochs;
+- operation-base, prior-settled, and candidate deltas;
+- evidence manifests and projection receipts;
+- historical evaluation corpora and settlement metrics.
 
-DuckDB MUST remain reconstructible from authoritative records and MUST NOT become the sole store of lifecycle state.
+DuckDB MUST remain reconstructible from authoritative records. SQL and materialized views MUST NOT emit authoritative `approve`, `eligible`, `conformant`, `settled`, or equivalent semantic conclusions. They provide closed facts to native CUE evaluation.
 
 ### 9.5 DSPy and models — bounded proposal/ranking plane
 
@@ -442,6 +493,12 @@ A human or external authority MUST authorize material changes outside the delega
 - execution contract.
 
 Such a change MUST suspend or terminate the current bounded operation and start a new operation contract.
+
+### 9.7 Current implementation boundary
+
+The current repository contains the main workbook, typed workbook adapter, operation-controller workbook, hook-local supervisor state, and a diagnostic append-only hook ledger. It does not yet contain the rollout/JSONL controller workbook or DuckDB dependency and schema required by this proposal.
+
+No implementation report MAY claim complete System B supervision, streaming analytics, readiness, continuity, conformance, effect attribution, or settlement until Section 16 is implemented and qualified end to end.
 
 ## 10. Snapshot and checkpoint model
 
@@ -732,7 +789,281 @@ A candidate observation MUST be bindable to:
 
 No component may manufacture an observation or reinterpret unavailable evidence merely to satisfy closure.
 
-## 16. Settlement
+## 16. System B runtime telemetry and streaming analytics
+
+System B requires a session-scoped telemetry plane between raw Codex execution and authoritative CUE/parent composition.
+
+```text
+Codex rollout JSONL ───────────────────────────────┐
+                                                  │
+PreToolUse/PostToolUse provisional ingress ───────┤
+                                                  ├─→ rollout-controller Marimo DAG
+operation-controller records and receipts ────────┤          │
+                                                  │          ▼
+target-workbook observations ─────────────────────┘    DuckDB projection
+                                                             │
+                                                             ▼
+                                                   closed CUE subjects
+                                                             │
+                                                             ▼
+                                              readiness / continuity /
+                                              conformance / attribution
+```
+
+### 16.1 Source authority and precedence
+
+The telemetry plane MUST preserve four distinct source classes:
+
+1. **Codex rollout committed prefix** — primary System B runtime ledger.
+2. **Operation-controller records** — authoritative controller-side request, binding, claim, release, and terminal receipt evidence.
+3. **Hook ingress** — provisional low-latency `PreToolUse` and `PostToolUse` observations.
+4. **DuckDB and Marimo projections** — disposable, reconstructable materializations.
+
+A hook observation MUST NOT silently become the canonical runtime event merely because it arrived first. A successful hook-local decision MUST NOT establish governed admission. A positive post-hook result MUST NOT establish conformance, attribution, settlement, or authorization.
+
+### 16.2 Committed-complete-prefix contract
+
+The rollout controller MUST ingest only complete JSONL records from an immutable identified prefix.
+
+```cue
+#RolloutPrefix: close({
+	path: string & != ""
+
+	sourceIdentity: close({
+		device?:    uint
+		inode?:     uint
+		generation: string & != ""
+	})
+
+	byteStart: uint
+	byteEnd:   uint
+
+	lastCompleteRecordEnd: uint
+	recordCount:           uint
+
+	prefixDigest:         #Digest
+	previousPrefixDigest?: #Digest
+
+	completeLinesOnly: true
+})
+```
+
+The reader MUST:
+
+- stop at the last complete newline-delimited record;
+- retain byte ranges and raw digests for every record;
+- detect source replacement, truncation, rotation, or incompatible generation change;
+- advance its cursor atomically only after durable materialization succeeds;
+- produce the same projection when replaying the same prefix;
+- close the current continuity epoch on an unexplained source discontinuity.
+
+A trailing partial line MUST remain unconsumed and MUST NOT influence a control conclusion.
+
+### 16.3 Raw-record and normalized-event identity
+
+```cue
+#RawRuntimeRecord: close({
+	source: "codex-rollout" | "pre-hook" | "post-hook" |
+		"operation-controller" | "target-workbook"
+
+	sourceIdentity: string & != ""
+	byteStart?:     uint
+	byteEnd?:       uint
+	lineNumber?:    uint
+
+	rawDigest: #Digest
+	payload:   _
+})
+
+#RuntimeStage:
+	"proposed" |
+	"pre-observed" |
+	"dispatched" |
+	"started" |
+	"returned" |
+	"failed" |
+	"cancelled" |
+	"indeterminate"
+
+#NormalizedRuntimeEvent: close({
+	eventID: string & != ""
+
+	sessionID: string & != ""
+	turnID?:   string & != ""
+	toolUseID?: string & != ""
+
+	stage: #RuntimeStage
+
+	proposedAction?:  #CanonicalAction
+	effectiveAction?: #CanonicalAction
+
+	sourceRefs: [#RawRecordReference, ...#RawRecordReference]
+
+	provisional: bool
+	committed:   bool
+
+	eventDigest: #Digest
+})
+```
+
+Normalization MUST be mechanical, deterministic, versioned, and idempotent. Python, Pydantic, Marimo, and DuckDB MAY frame and correlate records but MUST NOT manufacture semantic readiness, continuity, conformance, attribution, admission, or authorization.
+
+### 16.4 Provisional hook reconciliation
+
+The controller MUST model hook ingress as an overlay on the committed rollout prefix.
+
+```text
+PreToolUse received
+    → provisional-pre
+
+matching rollout proposal committed
+    → pre-reconciled
+
+dispatch/start evidence committed
+    → dispatched
+
+PostToolUse received
+    → provisional-terminal
+
+matching rollout terminal committed
+    → terminal-reconciled
+
+operation-controller receipt bound
+    → effect-correlated
+
+all required identities and records consistent
+    → continuity-preserved
+```
+
+The following cases MUST remain explicit rather than being normalized into success:
+
+| Condition | Required projection |
+|---|---|
+| Provisional event has no committed counterpart | `pending` or `continuity-indeterminate` |
+| Committed controlled event has no required hook coverage | `coverage-gap` |
+| Same tool-use identity maps to different semantic requests | `identity-conflict` |
+| Terminal hook event lacks qualified dispatch/start evidence | `effect-attribution-unresolved` |
+| Controller claim exists without a terminal receipt | `claimed-without-receipt` |
+| Terminal records disagree | `terminal-conflict` |
+| Rollout source is replaced, truncated, or rebased unexpectedly | `continuity-lost` and a closed epoch |
+| Unknown or unsupported tool event occurs inside required coverage | `coverage-gap` or `indeterminate`, never implicit approval |
+
+Provisional records MAY support immediate fail-closed restrictions. Expansive authority MUST wait for committed-record reconciliation and exact parent composition.
+
+### 16.5 DuckDB materialization contract
+
+The initial implementation SHOULD expose at least these relations:
+
+| Relation | Purpose |
+|---|---|
+| `raw_records` | Immutable source coordinates, raw payloads or payload references, and digests |
+| `rollout_prefixes` | Source generation, committed byte cursor, prefix chain, and projection status |
+| `normalized_events` | Mechanically normalized runtime events |
+| `hook_ingress` | Provisional pre/post observations and reconciliation state |
+| `controller_records` | Requests, bindings, claims, releases, and receipts |
+| `action_correlations` | Proposed/effective/dispatch/start/terminal/receipt linkage |
+| `pending_operations` | Operations lacking a qualified terminal state |
+| `continuity_epochs` | Source, hook, controller, and supervision continuity boundaries |
+| `checkpoint_deltas` | Operation-base, prior-settled, candidate, and relevant-state comparisons |
+| `evidence_manifests` | Exact closed facts selected for CUE evaluation |
+| `projection_receipts` | Input prefix, projector identity, schema revision, and output digest |
+
+Incremental ingestion MUST follow one atomic logical transaction:
+
+```text
+lock source cursor
+    → identify complete new prefix
+    → hash exact bytes
+    → parse bounded records
+    → insert raw records idempotently
+    → normalize mechanically
+    → reconcile provisional hook ingress
+    → refresh causal, pending, and continuity projections
+    → construct evidence manifest and projection receipt
+    → atomically advance cursor
+```
+
+Duplicate ingestion MUST be inert. A transaction failure MUST leave the prior cursor and materialization valid. Database corruption or incompatible schema revision MUST force rebuild or an explicit unavailable state; it MUST NOT silently continue from uncertain projections.
+
+### 16.6 Rollout-controller Marimo DAG
+
+The session-scoped rollout workbook MUST own the reactive dependency topology for:
+
+```text
+source identity
+    → committed-prefix tail
+    → raw-record validation
+    → incremental DuckDB ingestion
+    → provisional hook overlay
+    → action and receipt correlation
+    → continuity projection
+    → checkpoint and delta projection
+    → evidence-manifest construction
+    → native CUE evaluation
+    → parent-composition input
+```
+
+The workbook SHOULD expose:
+
+- source generation, cursor, prefix digest, and incomplete-tail status;
+- raw, committed, provisional, and reconciled event counts;
+- unreconciled or conflicting hook events;
+- pending, abandoned, or claim-without-receipt operations;
+- proposed, effective, dispatched, terminal, and receipted action identities;
+- current continuity epoch and reasons for any gap or loss;
+- operation base, prior settled checkpoint, candidate checkpoint, and deltas;
+- selected evidence-manifest digest;
+- native CUE request, engine identity, raw conclusion, and diagnostics;
+- settlement and parent-composition blockers.
+
+Reactive reruns MUST be idempotent. A source or projection change MAY trigger recomputation, but MUST NOT directly trigger an effectful operation.
+
+### 16.7 System B evidence manifest and semantic conclusion
+
+```cue
+#SystemBEvidenceManifest: close({
+	rolloutPrefix: #RolloutPrefix
+
+	rawRecordSetDigest:      #Digest
+	normalizedEventSetDigest: #Digest
+	actionCorrelationDigest:  #Digest
+	controllerRecordDigest:   #Digest
+
+	continuityEpoch: #ContinuityEpoch
+	pendingOperations: [...#PendingOperationReference]
+	coverageGaps:      [...#CoverageGap]
+	conflicts:         [...#RuntimeConflict]
+
+	operationBase: #RepositorySnapshot
+	priorSettled:  #RepositorySnapshot
+	candidate:     #RepositorySnapshot
+
+	projectionReceipt: #ProjectionReceipt
+})
+```
+
+Native CUE MUST evaluate the closed manifest and produce technical System B conclusions such as readiness, trusted continuity, execution conformance, and effect attribution. DuckDB queries, Python reducers, and Marimo cells MUST NOT own those conclusions.
+
+The parent composition layer MUST bind the exact System B manifest and conclusion digests with System A eligibility, the tactical conclusion, the operation order, and parent authorization. A later successful result MUST NOT retroactively authorize an action initiated without that exact composition.
+
+### 16.8 Completion gate
+
+System B MUST NOT be described as complete until all of the following are implemented and qualified:
+
+```text
+committed-prefix tailing
+∧ complete-line and source-generation safety
+∧ durable incremental DuckDB projection
+∧ provisional pre/post hook reconciliation
+∧ controller receipt and dispatch correlation
+∧ continuity epochs and gap handling
+∧ closed System B evidence manifests
+∧ native CUE readiness/continuity/conformance/attribution
+∧ exact parent composition
+∧ restart, replay, truncation, conflict, and partial-line tests
+```
+
+## 17. Settlement
 
 Admission to execute is not settlement.
 
@@ -756,9 +1087,14 @@ A candidate MAY become the next settled checkpoint only when:
 
 ```text
 required execution completed
+∧ the relevant rollout prefix is closed and projection-receipted
+∧ required provisional hook ingress is reconciled or explicitly qualified as a gap
+∧ dispatch, terminal records, and controller receipts are correlated
+∧ no unresolved identity or terminal conflicts remain
 ∧ Marimo graph is settled when Marimo is involved
 ∧ no relevant stale descendants remain
-∧ effect evidence is qualified
+∧ System B continuity and conformance are qualified by native CUE
+∧ effect evidence and attribution are qualified
 ∧ postconditions hold
 ∧ continuity remains trusted
 ∧ resulting OSCAL closure is admitted
@@ -782,7 +1118,7 @@ settled
 published
 ```
 
-## 17. Reactive playbook model
+## 18. Reactive playbook model
 
 A playbook is a versioned, CUE-admitted graph-rewrite contract associated with an OSCAL-identified capability or operation. It is not a free-form agent plan.
 
@@ -830,7 +1166,7 @@ A playbook is a versioned, CUE-admitted graph-rewrite contract associated with a
 }
 ```
 
-### 17.1 Mutation meanings
+### 18.1 Mutation meanings
 
 | Mutation | Meaning |
 |---|---|
@@ -847,7 +1183,7 @@ A playbook is a versioned, CUE-admitted graph-rewrite contract associated with a
 | `extract` | Preserve admissible evidence or products from an incomplete branch |
 | `terminate` | Close the bounded operation with a typed disposition |
 
-### 17.2 Eligibility before ranking
+### 18.2 Eligibility before ranking
 
 CUE MUST derive the eligible playbook subset before DSPy or a model receives candidates.
 
@@ -867,13 +1203,13 @@ trigger compatibility
 
 The exact selected instance MUST be revalidated against the latest immutable checkpoint immediately before graph or source mutation.
 
-### 17.3 Bounded replacement versus material replan
+### 18.3 Bounded replacement versus material replan
 
 A predefined alternative inside the existing authority envelope MAY be selected as a bounded replacement.
 
 A change to objective, authority, topology, accepted risk, external resources, or execution contract is a material replan and MUST create a new operation boundary.
 
-## 18. Failure, correction, extraction, and continuity
+## 19. Failure, correction, extraction, and continuity
 
 Failure handling SHOULD preserve separate outcomes:
 
@@ -902,7 +1238,9 @@ termination or handoff to a fresh operation
 
 Continuity loss MUST suspend automatic effectful continuation. Recovery requires requalification, rebase, or termination.
 
-### 18.1 Reference failure scenario: incomplete upstream coverage
+System B continuity MUST be considered lost or indeterminate when required runtime evidence cannot be reconstructed, including unexplained rollout truncation or replacement, a committed/provisional identity conflict, missing dispatch evidence, a claim without receipt, incompatible terminal records, or an unqualified projection rebuild.
+
+### 19.1 Reference failure scenario: incomplete upstream coverage
 
 A canonical bounded-failure example is an upstream monitor required to classify two independent channels when one exact channel head cannot be established.
 
@@ -932,7 +1270,7 @@ forbidden
 
 An anti-churn evaluator MAY inspect effective semantic action, relevant state, qualified terminal evidence, continuity, and correction/uncertainty budgets. Its conclusion MAY constrain playbook eligibility but MUST NOT independently authorize execution or mutate the operation.
 
-## 19. Constrained Git mutation and publication boundary
+## 20. Constrained Git mutation and publication boundary
 
 Only a constrained Git adapter MAY mutate authoritative repository state.
 
@@ -965,9 +1303,9 @@ The adapter MUST:
 
 Models, DSPy, Marimo, Minder, GUAC, and generated clients MUST NOT bypass this boundary.
 
-## 20. Supply-chain and evidence services
+## 21. Supply-chain and evidence services
 
-### 20.1 SBOM
+### 21.1 SBOM
 
 SBOMs are first-class typed implementation evidence. They MAY remain SPDX or CycloneDX artifacts, but their lifecycle MUST be bound into OSCAL subjects and operations.
 
@@ -986,7 +1324,7 @@ component.attest-sbom
 
 An SBOM does not define authorization, transition guards, or controller state.
 
-### 20.2 Attestations
+### 21.2 Attestations
 
 Attestations bind typed claims to immutable subjects and SHOULD include:
 
@@ -1003,7 +1341,7 @@ predicate type
 
 Attestations supplement Git and OSCAL lifecycle records; they do not replace semantic qualification.
 
-### 20.3 GUAC
+### 21.3 GUAC
 
 GUAC MAY materialize a repository-scoped software and evidence graph for:
 
@@ -1016,13 +1354,13 @@ GUAC MAY materialize a repository-scoped software and evidence graph for:
 
 GUAC MUST NOT become the semantic, authorization, lifecycle, API, or transition authority.
 
-### 20.4 Minder and policy engines
+### 21.4 Minder and policy engines
 
 Minder MAY act as an evaluator and bounded remediation adapter. Its rules and profiles are derived execution configuration. Its results become candidate observations or findings.
 
 Minder MUST NOT independently select authoritative policy, widen scope, establish final OSCAL state, or publish remediation success as verified control effectiveness.
 
-### 20.5 Legacy Apercue disposition
+### 21.5 Legacy Apercue disposition
 
 Apercue is not retained as an independent architectural authority. Its responsibilities are normalized as follows:
 
@@ -1041,7 +1379,7 @@ Apercue is not retained as an independent architectural authority. Its responsib
 
 Reusable Apercue projection patterns MAY survive as non-authoritative generators, provided they emit deterministic receipts and cannot redefine canonical identity or semantics.
 
-## 21. Generation and adapter architecture
+## 22. Generation and adapter architecture
 
 Generation flows one way:
 
@@ -1077,11 +1415,11 @@ Every generator SHOULD emit a deterministic projection receipt:
 }
 ```
 
-## 22. Python and LLM adapter profile
+## 23. Python and LLM adapter profile
 
 The technology inventory in `awesome-llm-json.md` is normalized into replaceable layers rather than one flat dependency list.
 
-### 22.1 Contract and runtime boundary
+### 23.1 Contract and runtime boundary
 
 ```text
 CUE authoritative contract
@@ -1099,7 +1437,7 @@ CUE revalidation
 
 Pydantic validity establishes only Python-boundary validity.
 
-### 22.2 Recommended roles
+### 23.2 Recommended roles
 
 | Layer | Candidate | Role |
 |---|---|---|
@@ -1118,7 +1456,7 @@ LangChain, LlamaIndex, Marvin, and similar broad frameworks MAY be integration l
 
 Normalization or autocorrection MUST produce a transformation proposal and evidence. It MUST NOT silently convert invalid original output into proof of validity.
 
-### 22.3 External standards and transport profile
+### 23.3 External standards and transport profile
 
 External standards MAY be used behind Cuestrap operations without becoming canonical authority:
 
@@ -1139,7 +1477,7 @@ External standards MAY be used behind Cuestrap operations without becoming canon
 
 Transport acceptance or remote-agent completion MUST still return through the same request, capability, receipt, evidence, settlement, and publication contracts.
 
-## 23. Structural validation and compatibility
+## 24. Structural validation and compatibility
 
 Official OSCAL validation remains an independent gate.
 
@@ -1168,7 +1506,7 @@ Generated schema packages MUST NOT be hand-edited.
 
 Validator disagreements MUST be recorded in a compatibility ledger with exact tool and revision identities. They MUST NOT be silently patched at an adapter boundary.
 
-## 24. Query and graph materialization
+## 25. Query and graph materialization
 
 The semantic graph is derived from OSCAL and qualified evidence relationships.
 
@@ -1191,30 +1529,42 @@ Attestation ─asserts-about▶ Artifact or transition
 
 Derived edges MAY be materialized in GUAC or DuckDB. OSCAL UUIDs and Git/digest identities remain authoritative.
 
-## 25. End-to-end reconciliation loop
+DuckDB additionally materializes the System B temporal and causal graph defined in Section 16. Its rows MUST retain raw-source references and projection-receipt identity. GUAC remains the broader software/evidence graph; DuckDB remains the session and historical analytical projection. Neither may substitute local IDs or inferred joins for canonical OSCAL, Git, operation, tool-use, receipt, or digest identity.
+
+## 26. End-to-end reconciliation loop
 
 ```text
-1. Observe repository, collaboration, governance, and evidence state.
-2. Resolve an immutable Git snapshot and OSCAL closure.
-3. Load the pinned Component Definition API profile and CUE contract.
-4. Derive current lifecycle and continuity state.
-5. Compare current state with Catalog/Profile requirements and desired OSCAL state.
-6. Receive or construct a candidate request.
-7. Derive the permitted operation or eligible playbook subset.
-8. Permit deterministic, human, or model proposal generation inside that subset.
-9. Normalize, freeze, and digest the proposal.
-10. Construct a candidate checkpoint.
-11. Perform structural, semantic, authority, evidence, continuity, and effect qualification.
-12. Deny, suspend, or issue a narrowed capability.
-13. Execute through System B and the relevant bounded adapter.
-14. Collect raw outputs, artifacts, traces, and receipts.
-15. Bind candidate observations to provenance.
-16. Validate postconditions, invariants, and resulting OSCAL closure.
-17. Evaluate settlement.
-18. Construct and verify Git objects through the constrained adapter.
-19. Move only the authorized reference and publish only qualified state.
-20. Advance the settled anchor.
-21. Update disposable GUAC, DuckDB, report, and transport projections.
+1. Resolve repository, rollout source, controller-record, and contract identities.
+2. Tail only the committed complete prefix of the Codex rollout JSONL.
+3. Ingest raw records idempotently and retain exact source coordinates and digests.
+4. Overlay current provisional PreToolUse/PostToolUse ingress.
+5. Correlate proposed, effective, dispatched, started, terminal, and receipted actions.
+6. Materialize DuckDB pending-operation, continuity-epoch, checkpoint, and delta views.
+7. Construct a closed System B evidence manifest and projection receipt.
+8. Evaluate System B readiness, continuity, conformance, and attribution through native CUE.
+9. Observe repository, collaboration, governance, and System A evidence state.
+10. Resolve an immutable Git snapshot and OSCAL closure.
+11. Load the pinned Component Definition API profile and CUE contract.
+12. Derive current lifecycle, target eligibility, and continuity state.
+13. Compare current state with Catalog/Profile requirements and desired OSCAL state.
+14. Receive or construct a candidate request.
+15. Derive the permitted operation or eligible playbook subset.
+16. Permit deterministic, human, or model proposal generation inside that subset.
+17. Normalize, freeze, and digest the proposal.
+18. Construct a candidate checkpoint.
+19. Compose System A eligibility, System B readiness/continuity, tactical conclusion, exact order, and parent authorization.
+20. Deny, suspend, or issue a narrowed capability for the exact bundle and epochs.
+21. Execute through System B and the relevant bounded adapter.
+22. Collect raw outputs, artifacts, traces, hook ingress, controller records, and receipts.
+23. Advance and reconcile the committed rollout prefix.
+24. Rebuild the DuckDB projection and System B evidence manifest.
+25. Bind candidate observations to provenance and evaluate post-operation System B conformance and attribution through CUE.
+26. Validate System A postconditions, invariants, and resulting OSCAL closure.
+27. Evaluate joint settlement.
+28. Construct and verify Git objects through the constrained adapter.
+29. Move only the authorized reference and publish only qualified state.
+30. Advance the settled anchor.
+31. Update disposable GUAC, DuckDB, report, and transport projections.
 ```
 
 Control-theoretically:
@@ -1245,84 +1595,101 @@ next authoritative state
     = validated and published Git commit
 ```
 
-## 26. Minimal vertical slice
+## 27. Minimal vertical slice
 
-The first implementation SHOULD prove the complete authority chain with one narrow scenario.
+The first implementation SHOULD prove the complete authority chain and the missing System B telemetry chain with one narrow scenario.
 
-1. Pin one official OSCAL model, Metaschema revision, and validation toolchain.
-2. Import or generate its structural CUE representation reproducibly.
-3. Define one Cuestrap Component Definition capability and one operation.
-4. Add one cross-resource identity or reference constraint.
-5. Add one lifecycle or publication constraint.
-6. Observe one immutable repository snapshot.
-7. Construct one bounded transition request and proposal.
-8. Freeze and digest the proposal and candidate checkpoint.
-9. Qualify it through official OSCAL validation and CUE closure.
-10. Generate one Go or Python adapter, one Pydantic model, and one Hypothesis strategy.
-11. Introduce one deliberate invalid mutant and preserve it as a negative fixture.
-12. Issue one narrowed execution capability.
-13. Execute one bounded operation through System B.
-14. Emit one execution receipt and one attestation.
-15. Bind one observation into Assessment Results.
-16. Apply one admitted mutation through the constrained Git adapter.
-17. Generate or update one SBOM.
-18. Ingest derived evidence into a repository-scoped GUAC projection.
-19. Replay the complete slice and verify equivalent identities, digests, decisions, and resulting state.
+1. Pin one official OSCAL model, Metaschema revision, native CUE engine, and validation toolchain.
+2. Define one Cuestrap Component Definition capability and one operation.
+3. Capture one immutable operation base and one prior-settled checkpoint.
+4. Provide a bounded Codex rollout JSONL fixture containing a proposed action, dispatch/start record, and terminal record.
+5. Tail only its committed complete prefix and preserve byte ranges, generation identity, and prefix digest.
+6. Ingest the prefix into DuckDB and emit a projection receipt.
+7. Inject one provisional `PreToolUse` event and reconcile it with the committed proposal.
+8. Inject one provisional `PostToolUse` event and reconcile it with the committed terminal record.
+9. Bind one operation-controller request, claim, and terminal receipt to the same effective action.
+10. Materialize action correlation, pending-operation, continuity-epoch, checkpoint, and delta views.
+11. Construct one closed System B evidence manifest.
+12. Evaluate readiness and trusted continuity through native CUE.
+13. Construct one bounded transition request and frozen proposal.
+14. Qualify System A eligibility, the tactical conclusion, System B readiness, exact parent authorization, and the complete bundle identity.
+15. Issue one narrowed execution capability.
+16. Execute one bounded operation through the operation-controller workbook.
+17. Advance the rollout prefix, rebuild DuckDB, and evaluate conformance and effect attribution through native CUE.
+18. Emit one execution receipt and one attestation.
+19. Bind one observation into Assessment Results.
+20. Apply one admitted mutation through the constrained Git adapter.
+21. Evaluate settlement and publish only after both systems and the parent composition agree.
+22. Replay the complete slice and verify equivalent identities, projections, conclusions, and resulting state.
+23. Add negative fixtures for a partial trailing JSON line, unmatched post-hook event, claim without receipt, source truncation, and conflicting semantic request identity.
 
-## 27. Proposed implementation stages
+## 28. Proposed implementation stages
 
 ### Stage 0 — vocabulary and contract kernel
 
-- Freeze identifiers, digests, references, actors, resource selectors, effects, assertions, evidence references, epochs, and dispositions.
+- Freeze identifiers, digests, references, actors, resource selectors, effects, assertions, evidence references, epochs, runtime stages, correlation states, and dispositions.
 - Establish closed CUE definitions and negative fixtures.
 - Define which OSCAL extension points carry Cuestrap operation-profile data.
 
-### Stage 1 — immutable observation
+### Stage 1 — canonical raw observation
 
 - Implement Git object and repository snapshot observation.
-- Resolve mutable references to commits.
-- Produce deterministic snapshot digests and dirty-state handling.
+- Define rollout source generation, complete-prefix, raw-record, hook-ingress, and controller-record identities.
+- Resolve mutable references to immutable identities.
+- Produce deterministic snapshot and raw-prefix digests.
 
-### Stage 2 — operation and transition qualification
+### Stage 2 — System B telemetry and streaming analytics
+
+- Add DuckDB to the locked environment and define versioned migrations.
+- Implement the session-scoped rollout/JSONL Marimo controller workbook.
+- Tail committed complete prefixes with atomic cursor advancement and rotation/truncation handling.
+- Materialize raw, normalized, hook-ingress, controller, action-correlation, pending-operation, continuity, checkpoint, evidence-manifest, and projection-receipt relations.
+- Reconcile provisional pre/post hook events with committed rollout records.
+- Add restart, replay, duplicate, partial-line, conflict, claim-without-receipt, and source-discontinuity tests.
+
+### Stage 3 — native System B conclusions and parent composition
+
+- Construct closed System B evidence manifests.
+- Implement native CUE readiness, continuity, conformance, and effect-attribution relations.
+- Compose System A eligibility, tactical conclusion, System B conclusion, exact order identity, epochs, and parent authorization.
+- Remove positive authorization meaning from provisional Python anti-churn approval paths.
+
+### Stage 4 — operation and transition qualification
 
 - Implement request, proposal, qualification decision, capability, receipt, and settlement contracts.
 - Add official OSCAL validation and CUE semantic closure.
 - Add compatibility-ledger recording.
 
-### Stage 3 — constrained mutation adapter
+### Stage 5 — constrained mutation adapter
 
 - Implement object construction and authorized reference update as separate phases.
-- Prove fail-closed behavior under stale source, moved references, invalid postconditions, and capability violations.
+- Prove fail-closed behavior under stale source, moved references, invalid postconditions, capability violations, and System B continuity gaps.
 
-### Stage 4 — generated adapters
+### Stage 6 — generated adapters
 
 - Generate Go and Python types.
 - Add Pydantic and Hypothesis surfaces.
 - Add CLI/MCP adapters only after contract parity is tested.
 
-### Stage 5 — reactive execution and playbooks
+### Stage 7 — reactive execution and playbooks
 
-- Add Marimo source/DAG adapter.
+- Add the bounded Marimo source/DAG adapter.
 - Add closed graph-mutation vocabulary and initial playbook families.
-- Add candidate/prior-settled/operation-base checkpoint comparison.
+- Bind candidate/prior-settled/operation-base comparisons to System B checkpoint projections.
 
-### Stage 6 — bounded model integration
+### Stage 8 — bounded model integration
 
 - Add provider-native structured output or constrained decoding.
 - Add PydanticAI/Instructor boundaries as appropriate.
-- Add DSPy only after deterministic eligibility and acceptance metrics exist.
+- Add DSPy only after deterministic eligibility, System B evidence, and acceptance metrics exist.
 
-### Stage 7 — evidence and projections
+### Stage 9 — evidence, supply chain, and continuous reconciliation
 
-- Add Assessment Results binding, SBOM, attestations, GUAC, DuckDB, and telemetry projections.
-- Prove every projection is rebuildable from canonical state.
-
-### Stage 8 — continuous reconciliation
-
-- Add event triggers, reconciliation scheduling, collaboration state, pull-request publication, and bounded remediation.
+- Add Assessment Results binding, SBOM, attestations, GUAC, telemetry publication, event triggers, collaboration state, pull-request publication, and bounded remediation.
+- Prove every projection is rebuildable from canonical state and raw runtime sources.
 - Keep effect execution explicitly gated; do not map generic reactivity directly to mutation.
 
-## 28. Required conformance properties
+## 29. Required conformance properties
 
 The implementation SHOULD make the following properties executable:
 
@@ -1330,20 +1697,30 @@ The implementation SHOULD make the following properties executable:
 2. **Snapshot freshness** — a proposal qualified against stale source cannot execute.
 3. **Capability confinement** — attempted effects outside the grant are rejected and recorded.
 4. **Adapter non-widening** — generated Go/Python/JSON surfaces admit no value rejected by the canonical contract for the same operation boundary.
-5. **Identity preservation** — all published artifacts remain traceable to OSCAL UUIDs, contract IDs, Git OIDs, and digests.
-6. **Evidence non-forgery** — unavailable evidence cannot be converted into a positive observation.
-7. **Settlement monotonicity** — `priorSettled` advances only after complete settlement.
-8. **Projection rebuildability** — GUAC, DuckDB, reports, and generated artifacts can be reconstructed from canonical inputs.
-9. **Deterministic projection** — pinned generators produce byte-stable outputs or explicit nondeterminism evidence.
-10. **Negative-witness permanence** — discovered counterexamples remain rejected by subsequent revisions unless an explicit contract change reclassifies them.
-11. **Material-replan boundary** — changes outside delegated topology or authority require a new operation.
-12. **Publication isolation** — candidate object construction and authoritative reference movement remain separate privileges.
+5. **Identity preservation** — all published artifacts remain traceable to OSCAL UUIDs, contract IDs, Git OIDs, raw source coordinates, operation identities, receipt identities, and digests.
+6. **Evidence non-forgery** — unavailable or provisional evidence cannot be converted into a positive qualified observation.
+7. **Complete-line ingestion** — a partial trailing JSONL record never enters the normalized event set or a control conclusion.
+8. **Cursor monotonicity** — the committed prefix cursor advances only after a complete durable projection transaction.
+9. **Ingestion idempotence** — replaying an identical prefix produces no duplicate semantic events and the same projection digest.
+10. **Source discontinuity safety** — unexplained truncation, replacement, or generation change closes continuity and prevents automatic continuation.
+11. **Hook reconciliation** — a provisional hook event cannot become committed evidence without an identity-consistent rollout counterpart or an explicit qualified gap disposition.
+12. **Dispatch/receipt correlation** — post-hook success without dispatch/start and controller-receipt evidence cannot establish effect attribution.
+13. **Conflict preservation** — mismatched request identities or terminal records remain conflicts and are never resolved by arrival order.
+14. **Restart recovery** — after process restart, the rollout controller reconstructs the same pending, continuity, checkpoint, and evidence-manifest projections from raw sources.
+15. **SQL non-authority** — DuckDB relations and queries cannot encode or publish final semantic admission, readiness, continuity, conformance, attribution, or settlement conclusions.
+16. **Native conclusion binding** — every System B technical conclusion binds an exact evidence-manifest digest, native engine identity, and projection receipt.
+17. **Settlement monotonicity** — `priorSettled` advances only after complete joint settlement.
+18. **Projection rebuildability** — GUAC, DuckDB, reports, and generated artifacts can be reconstructed from canonical inputs and identified raw runtime sources.
+19. **Deterministic projection** — pinned generators and normalizers produce byte-stable outputs or explicit nondeterminism evidence.
+20. **Negative-witness permanence** — discovered counterexamples remain rejected by subsequent revisions unless an explicit contract change reclassifies them.
+21. **Material-replan boundary** — changes outside delegated topology or authority require a new operation.
+22. **Publication isolation** — candidate object construction and authoritative reference movement remain separate privileges.
 
-## 29. Review decisions required
+## 30. Review decisions required
 
 The architecture is coherent only after the following choices are made explicit.
 
-### 29.1 Component Definition operation encoding
+### 30.1 Component Definition operation encoding
 
 Select the exact OSCAL-native encoding convention for:
 
@@ -1357,7 +1734,7 @@ Select the exact OSCAL-native encoding convention for:
 
 The selected convention SHOULD use official extension points and remain valid under official OSCAL validators.
 
-### 29.2 Canonical state artifact layout
+### 30.2 Canonical state artifact layout
 
 Define where the repository stores:
 
@@ -1372,7 +1749,7 @@ Define where the repository stores:
 
 The layout MUST distinguish canonical lifecycle state from disposable generated output.
 
-### 29.3 Capability representation
+### 30.3 Capability representation
 
 Choose whether the narrowed execution capability is represented as:
 
@@ -1383,15 +1760,15 @@ Choose whether the narrowed execution capability is represented as:
 
 The authoritative grant content MUST remain inspectable and replayable.
 
-### 29.4 Marimo mutation boundary
+### 30.4 Marimo mutation boundary
 
 Define the exact allowed Marimo source transformations and how generated edits are proven to correspond to an admitted playbook instance.
 
-### 29.5 Runtime persistence
+### 30.5 Runtime persistence
 
 Define which runtime events must be committed immediately, batched into decision/settlement receipts, or retained only as raw external artifacts.
 
-### 29.6 Technology profile status
+### 30.6 Technology profile status
 
 Decide which adapter recommendations are:
 
@@ -1401,22 +1778,43 @@ Decide which adapter recommendations are:
 
 The architecture should not couple canonical contracts to a rapidly changing LLM framework.
 
-## 30. Source normalization map
+### 30.7 Rollout source and committed-prefix identity
+
+Define the exact Codex rollout discovery mechanism, source-generation identity, byte-cursor persistence, complete-line boundary, prefix-digest chain, rotation/truncation response, retention policy, and replay contract.
+
+### 30.8 Hook coverage and reconciliation
+
+Define which controlled operations require `PreToolUse`, `PostToolUse`, dispatch/start, terminal, and controller-receipt coverage; the matching keys and semantic-equality rules; timeout and abandonment behavior; and which gaps force `indeterminate` versus `continuity-lost`.
+
+### 30.9 DuckDB schema and lifecycle
+
+Freeze the initial relation schemas, migration policy, raw-payload retention or externalization, database location, concurrency model, transaction boundary, corruption recovery, projection-receipt format, and rebuild procedure.
+
+### 30.10 System B conclusion interface
+
+Define the exact closed manifest consumed by native CUE and the disjoint result domains for readiness, continuity, conformance, and effect attribution. Define how the parent binds those result digests with System A, tactical, order, and authorization identities.
+
+## 31. Source normalization map
 
 | Source document | Retained concepts | Normalized disposition |
 |---|---|---|
 | `Cuestrap-Unified-Architecture.md` | OSCAL/CUE/Git authority chain; System A/B; operation and transition contracts; evidence, Git adapter, GUAC, SBOM, attestations, generation, vertical slice | Used as the principal integration spine; tightened around official OSCAL structure and runtime-plane distinctions |
 | `OSCAL-Native-API-Centric-GitOps-Architecture.md` | Component Definition API thesis; OSCAL lifecycle mapping; authorization tuple; GitOps loop; Minder/GUAC/SBOM roles | Merged into the canonical domain, authorization, and service-adapter sections; overlapping text removed |
-| `agentic-pipeline-architecture.md` | Marimo DAG authority; operation base/prior settled/candidate anchors; two-phase decisions; settlement; playbooks; graph mutation algebra; DSPy ranking; DuckDB projections | Integrated as a subordinate reactive execution protocol inside the OSCAL/CUE/Git authority model; unexplained “AOT” term replaced by Transition Qualification Decision |
+| `agentic-pipeline-architecture.md` | Marimo DAG authority; rollout/JSONL observation plane; operation base/prior settled/candidate anchors; two-phase decisions; settlement; playbooks; graph mutation algebra; DSPy ranking; DuckDB streaming projections | Integrated as the System B runtime telemetry and subordinate reactive execution protocol inside the OSCAL/CUE/Git authority model; committed-prefix, hook-reconciliation, DuckDB, continuity, and evidence-manifest contracts made explicit; unexplained “AOT” term replaced by Transition Qualification Decision |
 | `awesome-llm-json.md` | Schema/runtime taxonomy; Pydantic, PydanticAI, Instructor, DSPy, constrained decoding, provider runtimes, generated-client references | Converted from ecosystem review into a replaceable adapter profile; no listed framework is canonical authority |
 
-## 31. Compact normative formulation
+## 32. Compact normative formulation
 
 ```text
 Every governed capability is identified in OSCAL.
 Every callable operation is defined by the Cuestrap Component Definition profile.
 Every authoritative constraint and relation is executable through CUE.
 Every request begins from an immutable Git snapshot.
+Every System B runtime conclusion begins from an identified committed-complete rollout prefix.
+Every PreToolUse and PostToolUse observation remains provisional until reconciled or explicitly qualified as a gap.
+Every operation correlation preserves proposed, effective, dispatch, terminal, and receipt identities.
+Every DuckDB and Marimo projection is receipt-bound, rebuildable, and semantically subordinate.
+Every System B readiness, continuity, conformance, and attribution conclusion is evaluated by native CUE over a closed evidence manifest.
 Every proposal is frozen and digested before qualification.
 Every model sees only a pre-admitted alternative space.
 Every effect is bound to a narrowed capability.
@@ -1429,16 +1827,19 @@ Every analytical, graph, model, and transport surface is rebuildable and subordi
 No derived component becomes a parallel authority.
 ```
 
-## 32. Proposed decision
+## 33. Proposed decision
 
 Adopt this document as the architecture-review baseline, then split implementation contracts from it in the following order:
 
-1. identity and repository snapshot contract;
-2. Component Definition operation profile;
-3. transition request/proposal/decision/capability/receipt contract;
-4. constrained Git mutation contract;
-5. evidence and settlement contract;
-6. reactive playbook and Marimo mutation contract;
-7. generated adapter and model-runtime profiles.
+1. repository snapshot, rollout source-generation, committed-prefix, raw-record, and controller-record identity contracts;
+2. rollout/JSONL normalization, provisional hook reconciliation, DuckDB relation, cursor, and projection-receipt contracts;
+3. System B evidence-manifest and native CUE readiness/continuity/conformance/attribution contracts;
+4. exact parent composition contract across System A, System B, tactical conclusion, order revision, bundle identity, and authorization;
+5. Component Definition operation profile;
+6. transition request/proposal/decision/capability/receipt contract;
+7. constrained Git mutation contract;
+8. evidence and joint-settlement contract;
+9. reactive playbook and Marimo mutation contract;
+10. generated adapter and model-runtime profiles.
 
-This ordering establishes authority and effect boundaries before adding reactive or probabilistic execution.
+This ordering closes the missing runtime observation and continuity plane before the architecture claims governed execution, settlement, or continuous reconciliation.
