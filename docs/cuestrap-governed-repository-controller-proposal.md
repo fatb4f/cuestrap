@@ -11,6 +11,79 @@
 | Primary authorities | OSCAL lifecycle resources, CUE constraints, and Git object identity |
 | Primary controlled plant | Governed repository state and its linked governance/evidence graph |
 
+## Overview
+
+Cuestrap is a proof-carrying controller for governed repository state. It combines OSCAL lifecycle semantics, CUE admission contracts, and Git object identity so that every proposal, decision, effect, observation, and publication can be traced to an immutable source snapshot and a pinned contract revision.
+
+The architecture separates authority from execution:
+
+- **OSCAL** defines governance objects, lifecycle identity, control relationships, assessments, findings, risks, and remediation state.
+- **CUE** defines the executable contract lattice: structural narrowing, semantic closure, authorization, transition guards, evidence requirements, and effect bounds.
+- **Git** records exact content, checkpoints, receipts, accepted state, and authorized publication.
+- **System A** owns authority resolution, admission, capability narrowing, result validation, settlement, and publication.
+- **System B** proposes, observes, evaluates, and executes only through an admitted bounded capability.
+- **Marimo** owns the live reactive Python DAG; DuckDB, GUAC, generated types, policy engines, and LLM runtimes remain projections or bounded adapters.
+
+The governing control loop is:
+
+```text
+observe immutable state
+    → construct and freeze a candidate proposal
+    → qualify identity, authority, evidence, state, and effects
+    → grant an exact bounded capability
+    → execute and collect receipts
+    → validate postconditions and settlement
+    → commit accepted OSCAL state and evidence to Git
+```
+
+This document specifies that authority allocation, the operation and transition contracts, checkpoint and settlement semantics, the constrained Git mutation boundary, the reactive playbook model, adapter-generation rules, conformance properties, and the implementation decisions still requiring review.
+
+## Table of contents
+
+### Foundation
+
+- [1. Proposal](#1-proposal)
+- [2. Review objectives](#2-review-objectives)
+- [3. Non-goals](#3-non-goals)
+- [4. Core invariants](#4-core-invariants)
+- [5. Authority hierarchy](#5-authority-hierarchy)
+- [6. Identity model](#6-identity-model)
+- [7. Canonical domain model](#7-canonical-domain-model)
+- [8. Controlled plant and state model](#8-controlled-plant-and-state-model)
+- [9. System decomposition](#9-system-decomposition)
+
+### Transition and execution contracts
+
+- [10. Snapshot and checkpoint model](#10-snapshot-and-checkpoint-model)
+- [11. Transition protocol](#11-transition-protocol)
+- [12. Admission law](#12-admission-law)
+- [13. Effect model](#13-effect-model)
+- [14. Authorization model](#14-authorization-model)
+- [15. Evidence and provenance boundary](#15-evidence-and-provenance-boundary)
+- [16. Settlement](#16-settlement)
+- [17. Reactive playbook model](#17-reactive-playbook-model)
+- [18. Failure, correction, extraction, and continuity](#18-failure-correction-extraction-and-continuity)
+- [19. Constrained Git mutation and publication boundary](#19-constrained-git-mutation-and-publication-boundary)
+
+### Services, projections, and adapters
+
+- [20. Supply-chain and evidence services](#20-supply-chain-and-evidence-services)
+- [21. Generation and adapter architecture](#21-generation-and-adapter-architecture)
+- [22. Python and LLM adapter profile](#22-python-and-llm-adapter-profile)
+- [23. Structural validation and compatibility](#23-structural-validation-and-compatibility)
+- [24. Query and graph materialization](#24-query-and-graph-materialization)
+
+### Delivery and review
+
+- [25. End-to-end reconciliation loop](#25-end-to-end-reconciliation-loop)
+- [26. Minimal vertical slice](#26-minimal-vertical-slice)
+- [27. Proposed implementation stages](#27-proposed-implementation-stages)
+- [28. Required conformance properties](#28-required-conformance-properties)
+- [29. Review decisions required](#29-review-decisions-required)
+- [30. Source normalization map](#30-source-normalization-map)
+- [31. Compact normative formulation](#31-compact-normative-formulation)
+- [32. Proposed decision](#32-proposed-decision)
+
 ## 1. Proposal
 
 Cuestrap SHOULD be implemented as a **governed repository controller** with the following compact contract:
