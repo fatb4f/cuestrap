@@ -1,0 +1,9 @@
+\problemname{LT-01 Directional CUE Subsumption}
+
+This package fixes three semantic cases for the S04 directional-subsumption
+realization: forward success, reverse-direction rejection, and a structural
+case whose meaning is independent of field serialization order.
+
+The package declares expected facts and candidate expectations only. A
+downstream runner records raw observations; the independent S04 CUE judge
+normalizes those observations and derives the final semantic judgement.
