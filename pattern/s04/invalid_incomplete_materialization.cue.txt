@@ -1,0 +1,14 @@
+package s04
+
+invalidIncompleteMaterialization: #JudgementDerivation & {
+	realization: validation.realization & {
+		plans: {
+			"plan": {
+				operations: [{
+					left: {materializationID: #SafeID}
+				}]
+			}
+		}
+	}
+	ingress: validation.positive.ingress
+}

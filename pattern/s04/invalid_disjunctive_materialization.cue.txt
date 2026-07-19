@@ -1,0 +1,25 @@
+package s04
+
+invalidDisjunctiveMaterialization: #JudgementDerivation & {
+	realization: validation.realization & {
+		materializations: {
+			"left-materialization": {
+				materializationID:     "left-materialization"
+				realizationID:         "lt-witness"
+				subjectID:             "left"
+				materializationDigest: validation._digest
+				files:                 {}
+			}
+		}
+		plans: {
+			"plan": {
+				operations: [{
+					left: {
+						materializationID: "left-materialization" | "missing-materialization"
+					}
+				}]
+			}
+		}
+	}
+	ingress: validation.positive.ingress
+}

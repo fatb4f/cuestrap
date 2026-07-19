@@ -1,0 +1,13 @@
+package s04
+
+invalidMaterialization: #RealizationIntegrity & {
+	realization: validation.realization & {
+		plans: {
+			"plan": {
+				operations: [{
+					left: {materializationID: "missing-materialization"}
+				}]
+			}
+		}
+	}
+}

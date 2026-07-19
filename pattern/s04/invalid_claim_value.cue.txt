@@ -1,0 +1,24 @@
+package s04
+
+invalidClaimValue: #RealizationIntegrity & {
+	realization: validation.realization & {
+		claims: {
+			"contradictory-claim": {
+				claimID:     "contradictory-claim"
+				authorityID: "semantic"
+				predicate:   "subsumes"
+				operands:    [{subjectID: "left"}, {subjectID: "right"}]
+				value:       true
+			}
+		}
+		expectedFacts: {
+			"contradictory-fact": {
+				factID:        "contradictory-fact"
+				claimID:       "contradictory-claim"
+				authorityID:   "semantic"
+				predicate:     "subsumes"
+				expectedValue: false
+			}
+		}
+	}
+}

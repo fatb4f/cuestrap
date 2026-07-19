@@ -1,0 +1,146 @@
+package s04
+
+import "list"
+
+// #RealizationIntegrity closes references inside one S04 realization. A value
+// satisfying #CueRealization alone is shape-valid; a value admitted through
+// this relation additionally proves that every referenced graph member exists,
+// that every optional materialization reference is exact and coherent, and
+// that every expected fact preserves its semantic claim value.
+#RealizationIntegrity: {
+	realization: #CueRealization
+
+	let R = realization
+
+	_semanticAuthorityIDs: [for ID, Authority in R.authorities if Authority.role == "semantic-authority" {ID}]
+	_subjectIDs:           [for ID, _ in R.subjects {ID}]
+	_materializationIDs:   [for ID, _ in R.materializations {ID}]
+	_claimIDs:             [for ID, _ in R.claims {ID}]
+	_expectedFactIDs:      [for ID, _ in R.expectedFacts {ID}]
+	_normalizationRuleIDs: [for ID, _ in R.normalizationRules {ID}]
+	_normalizedFactIDs:    [for _, Rule in R.normalizationRules {Rule.normalizedFactID}]
+	_comparisonRuleIDs:    [for ID, _ in R.comparisonRules {ID}]
+	_capabilityIDs:        [for ID, _ in R.capabilityRequirements {ID}]
+	_planIDs:              [for ID, _ in R.plans {ID}]
+
+	_claims: {
+		for ClaimID, Claim in R.claims {
+			"\(ClaimID)": {
+				authorityExists: true & list.Contains(_semanticAuthorityIDs, Claim.authorityID)
+				subjectsExist: [for _, Operand in Claim.operands {
+					subjectExists: true & list.Contains(_subjectIDs, Operand.subjectID)
+					if Operand.materializationID != _|_ {
+						materializationExists:         true & list.Contains(_materializationIDs, Operand.materializationID)
+						materializationSubjectMatches: Operand.subjectID & R.materializations[Operand.materializationID].subjectID
+					}
+				}]
+			}
+		}
+	}
+
+	_materializations: {
+		for MaterializationID, Materialization in R.materializations {
+			"\(MaterializationID)": {
+				subjectExists: true & list.Contains(_subjectIDs, Materialization.subjectID)
+			}
+		}
+	}
+
+	_expectedFacts: {
+		for FactID, Fact in R.expectedFacts {
+			"\(FactID)": {
+				claimExists:        true & list.Contains(_claimIDs, Fact.claimID)
+				authorityExists:    true & list.Contains(_semanticAuthorityIDs, Fact.authorityID)
+				matchingClaimCount: 1 & len([for ClaimID, Claim in R.claims if ClaimID == Fact.claimID && Claim.authorityID == Fact.authorityID && Claim.predicate == Fact.predicate && Claim.value == Fact.expectedValue {ClaimID}])
+			}
+		}
+	}
+
+	_normalizedFactIDsUnique: true & list.UniqueItems(_normalizedFactIDs)
+
+	_comparisonRules: {
+		for RuleID, Rule in R.comparisonRules {
+			"\(RuleID)": {
+				expectedFactExists:   true & list.Contains(_expectedFactIDs, Rule.expectedFactID)
+				normalizedFactExists: true & list.Contains(_normalizedFactIDs, Rule.normalizedFactID)
+			}
+		}
+	}
+
+	_plans: {
+		for PlanID, Plan in R.plans {
+			"\(PlanID)": {
+				operations: [for _, Operation in Plan.operations {
+					leftSubjectExists: true & list.Contains(_subjectIDs, Operation.left.subjectID)
+					if Operation.left.materializationID != _|_ {
+						leftMaterializationExists:         true & list.Contains(_materializationIDs, Operation.left.materializationID)
+						leftMaterializationSubjectMatches: Operation.left.subjectID & R.materializations[Operation.left.materializationID].subjectID
+					}
+					if Operation.kind != "validate" {
+						rightSubjectExists: true & list.Contains(_subjectIDs, Operation.right.subjectID)
+						if Operation.right.materializationID != _|_ {
+							rightMaterializationExists:         true & list.Contains(_materializationIDs, Operation.right.materializationID)
+							rightMaterializationSubjectMatches: Operation.right.subjectID & R.materializations[Operation.right.materializationID].subjectID
+						}
+					}
+				}]
+			}
+		}
+	}
+
+	_cases: {
+		for CaseID, Case in R.cases {
+			"\(CaseID)": {
+				planExists: true & list.Contains(_planIDs, Case.planID)
+				subjectsExist: [for _, SubjectID in Case.subjectIDs {
+					true & list.Contains(_subjectIDs, SubjectID)
+				}]
+				expectedFactsExist: [for _, FactID in Case.expectedFactIDs {
+					true & list.Contains(_expectedFactIDs, FactID)
+				}]
+				normalizationRulesExist: [for _, RuleID in Case.normalizationRuleIDs {
+					true & list.Contains(_normalizationRuleIDs, RuleID)
+				}]
+				comparisonRulesExist: [for _, RuleID in Case.comparisonRuleIDs {
+					true & list.Contains(_comparisonRuleIDs, RuleID)
+				}]
+				capabilitiesExist: [for _, CapabilityID in Case.requiredCapabilityIDs {
+					true & list.Contains(_capabilityIDs, CapabilityID)
+				}]
+			}
+		}
+	}
+
+	// This payload is intentionally hidden from exported data but is re-exposed
+	// under a regular field by #JudgementDerivation's concrete JSON gate. That
+	// forces every integrity check to evaluate before judgement publication.
+	_qualificationChecks: {
+		claims:                  _claims
+		materializations:        _materializations
+		expectedFacts:           _expectedFacts
+		normalizedFactIDsUnique: _normalizedFactIDsUnique
+		comparisonRules:         _comparisonRules
+		plans:                   _plans
+		cases:                   _cases
+	}
+}
+
+// Raw observation facts are identity-bound to their enclosing record.
+#ObservationIntegrity: {
+	observation: #ObservationRecord
+
+	let O = observation
+	_facts: {
+		for FactID, Fact in O.facts {
+			"\(FactID)": Fact & {
+				factID:             FactID
+				observationID:      O.observationID
+				sourceRecordDigest: O.sourceRecordDigest
+			}
+		}
+	}
+
+	_qualificationChecks: {
+		facts: _facts
+	}
+}

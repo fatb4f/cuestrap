@@ -1,0 +1,32 @@
+package s04
+
+invalidProjection: #S04PPFProjectionDerivation & {
+	realizationArtifact: {
+		digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		realization: validation.realization
+	}
+	package: {
+		schema: "s04.minimal-ppf-package.v0"
+		profileID: "s04.kattis-ppf-minimal.v0"
+		sourceSpecVersion: "2025-09"
+		conformance: "profile-only"
+		packageID: "package"
+		packageDirectory: "package"
+		packageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		metadata: {problem_format_version: "2025-09", type: "pass-fail", name: "witness", uuid: "11111111-1111-4111-8111-111111111111", limits: {time_limit: 1, memory: 1, output: 1, validation_time: 1, validation_memory: 1, validation_output: 1}}
+		paths: {problemConfig: "problem.yaml", statement: "problem_statement/problem.en.tex", secretDataRoot: "data/secret", submissionsRoot: "submissions", inputValidatorsRoot: "input_validators", judgeEntrypoint: "output_validators/judge", rawObservationRoot: "evidence/raw", normalizedFactRoot: "evidence/normalized", comparisonRoot: "evidence/comparison", judgementRoot: "evidence/judgement"}
+		validator: {validatorID: "validator", kind: "s04-independent-judge", entrypoint: "output_validators/judge", semanticAuthorityID: "semantic", observationInputRoot: "evidence/raw", judgementOutputRoot: "evidence/judgement"}
+		groups: {"group": {groupID: "group", caseIDs: ["package-case"]}}
+		cases: {"package-case": {caseID: "package-case", groupID: "group", inputPath: "data/secret/case.in", answerPath: "data/secret/case.ans", evidencePath: "evidence/case"}}
+		candidates: {"candidate": {candidateID: "candidate", sourcePath: "submissions/accepted/main.cue", expectation: "accepted", evidencePath: "evidence/candidate"}}
+		evidenceRequirements: {"package": {evidenceID: "package", kind: "package-identity", path: "evidence/package", durable: true}}
+	}
+	request: {
+		projectionID: "projection"
+		projectionDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		semanticAuthorityID: "semantic"
+		packageDeclarerAuthorityID: "declarer"
+		rawObserverAuthorityIDs: ["observer"]
+		caseMap: {"foreign-case": "package-case"}
+	}
+}

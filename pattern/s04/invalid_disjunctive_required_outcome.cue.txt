@@ -1,0 +1,14 @@
+package s04
+
+invalidDisjunctiveRequiredOutcome: #JudgementDerivation & {
+	realization: validation.realization & {
+		cases: {
+			"case": {
+				outcomeConstraint: {
+					required: "satisfied" | "rejected"
+				}
+			}
+		}
+	}
+	ingress: validation.positive.ingress
+}

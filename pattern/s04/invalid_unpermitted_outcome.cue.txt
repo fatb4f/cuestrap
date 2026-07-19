@@ -1,0 +1,37 @@
+package s04
+
+invalidUnpermittedOutcome: #JudgementDerivation & {
+	realization: validation.realization & {
+		cases: {
+			"unpermitted-case": {
+				caseID:                "unpermitted-case"
+				groupID:               "group"
+				planID:                "plan"
+				subjectIDs:            ["left", "right"]
+				expectedFactIDs:       ["expected"]
+				normalizationRuleIDs:  ["normalize"]
+				comparisonRuleIDs:     ["compare"]
+				requiredCapabilityIDs: ["native-subsumes"]
+				outcomeConstraint:     {permitted: ["rejected"]}
+			}
+		}
+	}
+	ingress: {
+		requestID:                  "unpermitted-request"
+		judgementID:                "unpermitted-judgement"
+		derivationInputDigest:      validation._digest
+		evaluator:                  {cueRevision: "806821e40fae070318600a264d311517e596353b", languageVersion: "v0.18.0", relationID: "s04.derive-semantic-judgement.v0", facadeDigest: validation._digest}
+		realizationDigest:          validation._digest
+		caseID:                     "unpermitted-case"
+		semanticAuthorityID:        "semantic"
+		packageDigest:              validation._digest
+		candidateDigest:            validation._digest
+		observation:                {schema: "s04.observation-record.v0", observationID: "unpermitted-observation", caseID: "unpermitted-case", observerAuthorityID: "observer", sourceRecordDigest: validation._digest, state: "facts-observed", facts: {"raw": {factID: "raw", observationID: "unpermitted-observation", predicate: "subsumes", observedValue: true, sourceRecordDigest: validation._digest}}}
+		normalizedFactSetID:        "unpermitted-facts"
+		normalizedFactSetDigest:    validation._digest
+		normalizationRuleSetDigest: validation._digest
+		comparisonRuleSetDigest:    validation._digest
+		normalizationRuleIDs:       ["normalize"]
+		comparisonRuleIDs:          ["compare"]
+	}
+}
