@@ -48,7 +48,7 @@ lt01Realization: #CueRealization & {
 				kind:     "problem-package"
 				locator:  "pattern/s04/fixtures/lt01"
 				revision: "v0"
-				digest:   "sha256:3a3556162a7b5bc4b740d26a8997961fb6e6533abb1d6dab0e5485ca85f4925b"
+				digest:   "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
 			}
 		}
 		"cuestrap-observer": {
@@ -296,7 +296,7 @@ lt01Package: #MinimalPPFPackage & {
 
 	packageID:        "lt01-package"
 	packageDirectory: "lt01"
-	packageDigest:    "sha256:3a3556162a7b5bc4b740d26a8997961fb6e6533abb1d6dab0e5485ca85f4925b"
+	packageDigest:    "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
 
 	metadata: {
 		problem_format_version: "2025-09"
@@ -459,7 +459,7 @@ lt01QualifiedContract: #QualifiedS04ConsumerProfileContract & {
 
 lt01FixtureDesignManifest: #LT01FixtureDesignManifest & {
 	inputContractDigest: "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217"
-	packageTreeDigest:   "sha256:3a3556162a7b5bc4b740d26a8997961fb6e6533abb1d6dab0e5485ca85f4925b"
+	packageTreeDigest:   "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
 	candidateSetDigest:  "sha256:9a2672ff42dd3da4e5956090a683992eec880a70b7a5062003b59cb938710ffe"
 	packageRoot:         "pattern/s04/fixtures/lt01"
 	sourceFiles: {
@@ -505,7 +505,7 @@ lt01FixtureDesignManifest: #LT01FixtureDesignManifest & {
 		}
 		"problem-statement-problem-en-tex": {
 			path:   "pattern/s04/fixtures/lt01/problem_statement/problem.en.tex"
-			digest: "sha256:41a6b2af2caec6970ca47972728b7d3851fea7cb6a080f177135f1fc02fc2131"
+			digest: "sha256:63807499784b5ea20310933a6cf49495ecccf08ad3cc99fa2e0fc36623990372"
 		}
 		"submissions-accepted-reference-cue": {
 			path:   "pattern/s04/fixtures/lt01/submissions/accepted/reference.cue"
