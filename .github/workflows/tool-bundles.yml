@@ -29,6 +29,7 @@ jobs:
         with:
           go-version: "1.26.5"
           cache: false
+      - uses: astral-sh/setup-uv@v6
 
       - name: Bootstrap the CUE lock reader
         run: go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
@@ -40,46 +41,65 @@ jobs:
           bash tools/bundles/build-linux-amd64.sh dist/release | tee build-output.txt
           sed -n '/^lock-digest=/p; /^release-tag=/p' build-output.txt >> "$GITHUB_OUTPUT"
 
-      - name: Verify release metadata and archive round trip
+      - name: Qualify with network access disabled
         run: |
-          (cd dist/release && sha256sum --check --strict SHA256SUMS)
-          bash dist/release/install.sh \
-            --prefix "$RUNNER_TEMP/cuestrap"
-          "$RUNNER_TEMP/cuestrap/bin/python3" --version
-          "$RUNNER_TEMP/cuestrap/bin/go" version
-          "$RUNNER_TEMP/cuestrap/bin/cue" version
-          "$RUNNER_TEMP/cuestrap/bin/gopls" version
-          gopy_help=
-          if gopy_help=$("$RUNNER_TEMP/cuestrap/bin/gopy" -h 2>&1); then
-            gopy_status=0
-          else
-            gopy_status=$?
-          fi
-          [[ "$gopy_status" -eq 2 ]]
-          grep -q '^Usage of gopy:' <<<"$gopy_help"
-          mkdir -p "$RUNNER_TEMP/round-trip"
-          tar --zstd -xf dist/release/cuestrap-tools-linux-amd64.tar.zst \
-            -C "$RUNNER_TEMP/round-trip"
-          python3 - "$RUNNER_TEMP/round-trip" <<'PY'
-          import hashlib
-          import json
-          import pathlib
-          import sys
-
-          root = pathlib.Path(sys.argv[1])
-          manifest = json.loads(
-              (root / "share" / "cuestrap" / "manifest.json").read_text()
-          )
-          for entry in manifest["files"]:
-              payload = (root / entry["path"]).read_bytes()
-              assert len(payload) == entry["size"], entry["path"]
-              assert hashlib.sha256(payload).hexdigest() == entry["sha256"], entry["path"]
-          PY
+          sudo unshare --net -- \
+            bash "$GITHUB_WORKSPACE/tools/bundles/qualify-linux-amd64.sh" \
+            "$GITHUB_WORKSPACE/dist/release" \
+            "$RUNNER_TEMP/cuestrap-qualification"
 
       - name: Attest the primary distribution archive
+        id: attest
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: dist/release/cuestrap-tools-linux-amd64.tar.zst
+
+      - name: Assemble and verify the coherent offline upload
+        run: |
+          cp "${{ steps.attest.outputs.bundle-path }}" dist/release/attestation.jsonl
+          python3 - <<'PY'
+          import pathlib
+          import zipfile
+
+          root = pathlib.Path("dist/release")
+          assets = [
+              "install.sh",
+              "SHA256SUMS",
+              "manifest.json",
+              "cuestrap-tools-linux-amd64.tar.zst",
+              "attestation.jsonl",
+          ]
+          destination = root / "cuestrap-tools-linux-amd64-offline.zip"
+          with zipfile.ZipFile(destination, "w") as archive:
+              for name in assets:
+                  info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+                  info.external_attr = (0o755 if name == "install.sh" else 0o644) << 16
+                  compression = (
+                      zipfile.ZIP_STORED
+                      if name.endswith(".tar.zst")
+                      else zipfile.ZIP_DEFLATED
+                  )
+                  archive.writestr(info, (root / name).read_bytes(), compression)
+          PY
+          mkdir -p "$RUNNER_TEMP/offline-zip"
+          python3 - <<'PY'
+          import pathlib
+          import zipfile
+
+          archive = pathlib.Path("dist/release/cuestrap-tools-linux-amd64-offline.zip")
+          destination = pathlib.Path("${{ runner.temp }}/offline-zip")
+          expected = {
+              "install.sh",
+              "SHA256SUMS",
+              "manifest.json",
+              "cuestrap-tools-linux-amd64.tar.zst",
+              "attestation.jsonl",
+          }
+          with zipfile.ZipFile(archive) as source:
+              assert set(source.namelist()) == expected
+              source.extractall(destination)
+          PY
+          (cd "$RUNNER_TEMP/offline-zip" && sha256sum --check --strict SHA256SUMS)
 
       - name: Upload temporary qualification artifact
         uses: actions/upload-artifact@v4
@@ -129,4 +149,6 @@ jobs:
             dist/release/cuestrap-tools-linux-amd64.tar.zst \
             dist/release/manifest.json \
             dist/release/SHA256SUMS \
-            dist/release/install.sh
+            dist/release/install.sh \
+            dist/release/attestation.jsonl \
+            dist/release/cuestrap-tools-linux-amd64-offline.zip

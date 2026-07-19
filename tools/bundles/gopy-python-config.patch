@@ -1,0 +1,35 @@
+diff --git a/bind/utils.go b/bind/utils.go
+index ef25a2a..6093072 100644
+--- a/bind/utils.go
++++ b/bind/utils.go
+@@ -207,11 +207,30 @@ else:
+ 		`"-I` + raw.IncDir + `"`,
+ 	}, " ")
+ 	cfg.LdFlags = strings.Join([]string{
+ 		`"-L` + raw.LibDir + `"`,
+ 		`"-l` + raw.LibPy + `"`,
+ 		raw.ShLibs,
+ 		raw.SysLibs,
+ 	}, " ")
++
++	// Relocatable Python distributions can retain their build-time LIBDIR in
++	// sysconfig while their adjacent python3-config wrapper reports the
++	// relocated include and library paths. Prefer that authoritative surface
++	// when it is available, and retain the sysconfig result as a fallback.
++	configBin := filepath.Join(filepath.Dir(bin), "python3-config")
++	if _, err := os.Stat(configBin); err != nil {
++		configBin = filepath.Join(filepath.Dir(bin), "python-config")
++	}
++	if includes, err := exec.Command(configBin, "--includes").Output(); err == nil {
++		if value := strings.TrimSpace(string(includes)); value != "" {
++			cfg.CFlags = value
++		}
++	}
++	if ldflags, err := exec.Command(configBin, "--embed", "--ldflags").Output(); err == nil {
++		if value := strings.TrimSpace(string(ldflags)); value != "" {
++			cfg.LdFlags = value
++		}
++	}
+ 	cfg.LdDynamicFlags = raw.ShFlags
+ 
+ 	return cfg, nil
