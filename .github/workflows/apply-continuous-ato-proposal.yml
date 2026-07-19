@@ -2,20 +2,20 @@ name: Apply continuous OSCAL ATO proposal
 
 # One-time guarded proposal transformation.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/apply-continuous-ato-proposal.yml
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.event.issue.title == 'Apply continuous OSCAL ATO proposal'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
       - name: Replace proposal and commit
         shell: bash
