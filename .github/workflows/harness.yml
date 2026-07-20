@@ -37,9 +37,15 @@ jobs:
             python -m compileall -q src/cue-workbook tests
 
       - name: Run harness unit tests
+        shell: bash
         run: |
+          set +e
           uv run --project . --locked --exact -- \
-            python -m unittest discover -s tests -v
+            python -m unittest discover -s tests -v \
+            2>&1 | tee /tmp/cuestrap-unit-tests.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
 
       - name: Exercise browserless workbook transport
         run: |
@@ -62,6 +68,7 @@ jobs:
         with:
           name: cuestrap-transport-diagnostics
           path: |
+            /tmp/cuestrap-unit-tests.log
             /tmp/cuestrap-probe.json
             /tmp/cuestrap-probe.stderr
           if-no-files-found: warn
