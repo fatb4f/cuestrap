@@ -33,6 +33,7 @@ def _dispatch(app: Any) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--lt01", action="store_true")
     parser.add_argument("--probe-request", type=Path)
     parser.add_argument("--gopy-worker", action="store_true")
     parser.add_argument("--cue-py-worker", action="store_true")
@@ -58,6 +59,18 @@ def _dispatch(app: Any) -> int:
         )
         print(json.dumps(result, sort_keys=True, indent=2))
         return 0 if result.get("status") == "pass" else 1
+    if args.lt01:
+        result = _run_workbook(
+            app,
+            {
+                "execution_mode": "lt01",
+                "repo_root": str(root),
+                "workbook_request": DEFAULT_WORKBOOK_REQUEST,
+            },
+            "lt01_result",
+        )
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
     if args.probe_request:
         result = _run_workbook(
             app,
