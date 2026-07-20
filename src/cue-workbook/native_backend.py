@@ -11,7 +11,6 @@ from pydantic import ValidationError
 
 from models import (
     OBSERVATION_PROTOCOL,
-    WORKBOOK_CLI_PATH,
     WORKBOOK_PATH,
     HarnessError,
     HarnessFailure,
@@ -31,6 +30,7 @@ from native import (
     NativeBindingUnavailable,
     binding_identity,
     import_bindings,
+    native_worker_python,
     verify_cueprobe_artifact,
     verify_extension_artifact,
 )
@@ -100,6 +100,13 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
     module_root = Path(configured).resolve() if configured else workbook_root / "cue_native"
     if not module_root.exists():
         return _unavailable(subject, "gopy-worker", f"generated extension missing: {module_root}")
+    try:
+        worker_python = native_worker_python(repo_root)
+    except NativeBindingUnavailable as error:
+        return _unavailable(subject, "gopy-worker", str(error))
+    worker_entrypoint = workbook_root / "gopy_worker.py"
+    if not worker_entrypoint.is_file():
+        return _unavailable(subject, "gopy-worker", f"worker entrypoint missing: {worker_entrypoint}")
     environment = dict(os.environ)
     import_roots = [module_root.parent, workbook_root] if configured else [workbook_root]
     pythonpath = list(dict.fromkeys(str(path) for path in import_roots))
@@ -107,7 +114,7 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
         pythonpath.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(pythonpath)
     worker = run_process(
-        (sys.executable, str((repo_root / WORKBOOK_CLI_PATH).resolve()), "--gopy-worker"),
+        (str(worker_python), str(worker_entrypoint)),
         cwd=repo_root,
         env=environment,
         input_bytes=_json_bytes(payload),
@@ -321,6 +328,8 @@ def _native_observation(payload: dict[str, Any]) -> dict[str, Any]:
             "observedCUEModuleVersion": identity.get("observed_cue_module_version"),
             "goVersion": identity.get("go_version"),
             "gopyRevision": GOPY_REVISION,
+            "pythonVersion": sys.version,
+            "pythonABI": getattr(sys.implementation, "cache_tag", None),
         },
     }
 
