@@ -96,6 +96,16 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/cue" version
 
+      - name: Validate CUE v0.18 contract surfaces
+        run: |
+          cue fmt --check --files \
+            pattern/s04/*.cue \
+            src/cue-workbook/bootstrap_client/*.cue
+          cue vet ./pattern/s04
+          cue vet -c ./pattern/s04
+          cue vet ./src/cue-workbook/bootstrap_client
+          cue vet -c ./src/cue-workbook/bootstrap_client
+
       - name: Build pinned cueprobe runner
         shell: bash
         run: |
@@ -153,6 +163,16 @@ jobs:
               "invalid-observation",
           }
           assert all(not item["rawRecord"]["facts"] for item in witnesses)
+          assert all(
+              item["state"] == "judgement-published"
+              for item in result["derivations"]
+          )
+          outcomes = [
+              item["judgement"]["outcome"] for item in result["derivations"]
+          ]
+          assert outcomes.count("satisfied") == 5
+          assert outcomes.count("rejected") == 1
+          assert outcomes.count("indeterminate") == 3
           PY
 
       - name: Upload LT-01 execution evidence

@@ -276,7 +276,6 @@ lt01Realization: #CueRealization & {
 			requiredCapabilityIDs: ["cue-subsumes"]
 			outcomeConstraint: {
 				permitted: ["satisfied", "rejected", "indeterminate"]
-				required:  "satisfied"
 			}
 		}
 		"reverse-direction-rejection": {
@@ -289,7 +288,6 @@ lt01Realization: #CueRealization & {
 			requiredCapabilityIDs: ["cue-subsumes"]
 			outcomeConstraint: {
 				permitted: ["satisfied", "rejected", "indeterminate"]
-				required:  "satisfied"
 			}
 		}
 		"adversarial-structural": {
@@ -302,7 +300,6 @@ lt01Realization: #CueRealization & {
 			requiredCapabilityIDs: ["cue-subsumes"]
 			outcomeConstraint: {
 				permitted: ["satisfied", "rejected", "indeterminate"]
-				required:  "satisfied"
 			}
 		}
 	}

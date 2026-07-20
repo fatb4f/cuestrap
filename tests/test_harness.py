@@ -219,6 +219,17 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(timed_out.state, "timeout")
         self.assertEqual(start_error.state, "start-error")
 
+    def test_process_observation_enforces_the_output_limit(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["tool"],
+            0,
+            stdout=b"12345",
+            stderr=b"67890",
+        )
+        with patch("runtime.subprocess.run", return_value=completed):
+            limited = run_process(("tool",), cwd=ROOT, maximum_output_bytes=9)
+        self.assertEqual(limited.state, "output-limit-exceeded")
+
     def test_unavailable_semantic_tools_do_not_fail_architecture_validation(self) -> None:
         environment = Mock()
         environment.locked = True

@@ -32,37 +32,39 @@ package bootstrapclient
 })
 
 #LT01ResolvedExecution: close({
-	schema:                  "cuestrap.lt01-resolved-execution.v0"
-	resolutionDigest:        #Digest
-	provenanceCommit:        =~"^[0-9a-f]{40}$"
-	manifestDigest:          #Digest
-	inputContractDigest:     #Digest
-	realizationID:           string & !=""
-	realizationDigest:       #Digest
-	projectionDigest:        #Digest
-	contractDigest:          #Digest
-	packageDigest:           #Digest
-	candidateSetDigest:      #Digest
-	candidateID:             #LT01CandidateID
-	candidateDigest:         #Digest
-	candidateSourcePath:     #RepositoryPath
-	caseID:                  #LT01CaseID
-	operationID:             #OperationID
-	operationKind:           "subsumes"
-	direction:               "left-to-right"
-	leftSubjectID:           string & !=""
-	rightSubjectID:          string & !=""
-	leftSelector:            string & !=""
-	rightSelector:           string & !=""
-	observationFactID:       string & !=""
-	normalizationRuleIDs:    [string & !="", ...string & !=""]
-	comparisonRuleIDs:       [string & !="", ...string & !=""]
-	semanticAuthorityID:     string & !=""
-	observerAuthorityID:     string & !=""
-	capabilityIDs:           [string & !="", ...string & !=""]
-	timeoutMilliseconds:     uint & >0 & <=300000
-	maximumOutputBytes:      uint & >0 & <=1048576 * 64
-	evidencePath:            #RepositoryPath
+	schema:               "cuestrap.lt01-resolved-execution.v0"
+	resolutionDigest:     #Digest
+	action:               #LT01Action
+	recovery:             #LT01Recovery
+	provenanceCommit:     =~"^[0-9a-f]{40}$"
+	manifestDigest:       #Digest
+	inputContractDigest:  #Digest
+	realizationID:        string & !=""
+	realizationDigest:    #Digest
+	projectionDigest:     #Digest
+	contractDigest:       #Digest
+	packageDigest:        #Digest
+	candidateSetDigest:   #Digest
+	candidateID:          #LT01CandidateID
+	candidateDigest:      #Digest
+	candidateSourcePath:  #RepositoryPath
+	caseID:               #LT01CaseID
+	operationID:          #OperationID
+	operationKind:        "subsumes"
+	direction:            "left-to-right"
+	leftSubjectID:        string & !=""
+	rightSubjectID:       string & !=""
+	leftSelector:         string & !=""
+	rightSelector:        string & !=""
+	observationFactID:    string & !=""
+	normalizationRuleIDs: [string & !="", ...string & !=""]
+	comparisonRuleIDs:    [string & !="", ...string & !=""]
+	semanticAuthorityID:  string & !=""
+	observerAuthorityID:  string & !=""
+	capabilityIDs:        [string & !="", ...string & !=""]
+	timeoutMilliseconds:  uint & >0 & <=300000
+	maximumOutputBytes:   uint & >0 & <=67108864
+	evidencePath:         #RepositoryPath
 })
 
 #LT01ObservationState:
@@ -72,18 +74,18 @@ package bootstrapclient
 		"invalid-observation"
 
 #LT01RawExecutionRecord: close({
-	schema:              "cuestrap.lt01-raw-execution-record.v0"
-	recordDigest:        #Digest
-	resolutionDigest:    #Digest
-	action:              #LT01Action
-	transportState:      "returned" | "transport-failure"
-	observationState:    #LT01ObservationState
-	facts:               [string]: bool
+	schema:           "cuestrap.lt01-raw-execution-record.v0"
+	recordDigest:     #Digest
+	resolutionDigest: #Digest
+	action:           #LT01Action
+	transportState:   "returned" | "transport-failure"
+	observationState: #LT01ObservationState
+	facts: [string]: bool
 	diagnostics:         [...close({code: string & !="", message: string & !=""})]
 	backendObservations: _
 
 	if observationState != "facts-observed" {
-		facts: close({})
+		facts:       close({})
 		diagnostics: [_, ...]
 	}
 	if observationState == "facts-observed" {
@@ -92,8 +94,11 @@ package bootstrapclient
 })
 
 #LT01ReplayRecord: close({
-	schema:       "cuestrap.lt01-replay-record.v0"
-	resolution:   #LT01ResolvedExecution
-	rawRecord:    #LT01RawExecutionRecord & {resolutionDigest: resolution.resolutionDigest}
+	schema:     "cuestrap.lt01-replay-record.v0"
+	resolution: #LT01ResolvedExecution
+	rawRecord: #LT01RawExecutionRecord & {
+		resolutionDigest: resolution.resolutionDigest
+		action:           resolution.action
+	}
 	replayDigest: #Digest
 })

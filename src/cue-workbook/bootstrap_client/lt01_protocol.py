@@ -11,6 +11,7 @@ from typing import Any, Literal, Mapping
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from models import HarnessError, HarnessFailure, _digest_bytes, _json_bytes, _reject_claimant_fields
+from native import CUE_MODULE_VERSION, CUE_REVISION, NativeBindingUnavailable, verify_cue_cli
 
 INTENT_SCHEMA = "cuestrap.lt01-execution-intent.v0"
 RESOLUTION_SCHEMA = "cuestrap.lt01-resolved-execution.v0"
@@ -72,9 +73,13 @@ def parse_intent(value: object) -> ExecutionIntent:
         raise HarnessError(HarnessFailure.INVALID_PROTOCOL, str(error)) from error
 
 
-def load_resolution_source(root: Path, cue_binary: str = "cue") -> dict[str, Any]:
+def load_resolution_source(root: Path, cue_binary: str | None = None) -> dict[str, Any]:
+    try:
+        evaluator = verify_cue_cli(cue_binary)
+    except (NativeBindingUnavailable, OSError) as error:
+        raise HarnessError(HarnessFailure.BACKEND_UNAVAILABLE, str(error)) from error
     process = subprocess.run(
-        [cue_binary, "export", "./pattern/s04", "-e", "lt01ExecutionResolutionSource"],
+        [evaluator["path"], "export", "./pattern/s04", "-e", "lt01ExecutionResolutionSource"],
         cwd=root.resolve(strict=True),
         capture_output=True,
         text=True,
@@ -272,6 +277,8 @@ def resolve_execution(
     limits = package["metadata"]["limits"]
     result = {
         "schema": RESOLUTION_SCHEMA,
+        "action": intent.action,
+        "recovery": intent.recovery,
         "provenanceCommit": PROVENANCE_COMMIT,
         "manifestDigest": _digest_bytes(_json_bytes(manifest)),
         "inputContractDigest": manifest["inputContractDigest"],
@@ -357,8 +364,8 @@ def judgement_ingress(
         "requestID": f'{resolution["candidateID"]}-{resolution["caseID"]}-request',
         "judgementID": f'{resolution["candidateID"]}-{resolution["caseID"]}-judgement',
         "evaluator": {
-            "cueRevision": "806821e40fae070318600a264d311517e596353b",
-            "languageVersion": "v0.18.0",
+            "cueRevision": CUE_REVISION,
+            "languageVersion": CUE_MODULE_VERSION,
             "relationID": "s04.derive-semantic-judgement.v0",
             "facadeDigest": _digest_bytes(b"s04.derive-semantic-judgement.v0"),
         },

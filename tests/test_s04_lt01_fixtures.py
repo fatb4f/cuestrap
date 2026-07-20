@@ -161,6 +161,11 @@ class LT01FixtureDesignTests(unittest.TestCase):
             contract["package"]["candidates"]["rejected-reversed-operands"]["expectation"],
             "rejected",
         )
+        for case in contract["realization"]["cases"].values():
+            self.assertEqual(
+                case["outcomeConstraint"],
+                {"permitted": ["satisfied", "rejected", "indeterminate"]},
+            )
 
     def test_manifest_binds_semantic_artifact_identities(self) -> None:
         contract = self._eval("lt01QualifiedContract.contract")

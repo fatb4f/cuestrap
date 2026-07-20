@@ -256,6 +256,7 @@ class LT01ExecutionTests(unittest.TestCase):
             (resolved["operationID"], resolved["leftSubjectID"], resolved["rightSubjectID"]),
             ("reverse-operation", "reverse-left", "reverse-right"),
         )
+        self.assertEqual((resolved["action"], resolved["recovery"]), ("execute-case", "none"))
 
         stale_package = copy.deepcopy(self.source)
         stale_package["manifest"]["packageTreeDigest"] = "sha256:" + "0" * 64
@@ -333,6 +334,99 @@ class LT01ExecutionTests(unittest.TestCase):
         left = execute_intent(self.root, self.intent(), source=self.source, probe_executor=self.probe)
         right = execute_intent(self.root, self.intent(), source=self.source, probe_executor=self.probe)
         self.assertEqual(left["replayDigest"], right["replayDigest"])
+
+    def test_recovery_is_bound_into_resolution_and_replay(self) -> None:
+        original = self.intent()
+        retried = self.intent()
+        retried["recovery"] = "retry"
+        left = execute_intent(self.root, original, source=self.source, probe_executor=self.probe)
+        right = execute_intent(self.root, retried, source=self.source, probe_executor=self.probe)
+        self.assertNotEqual(
+            left["resolution"]["resolutionDigest"],
+            right["resolution"]["resolutionDigest"],
+        )
+        self.assertNotEqual(left["replayDigest"], right["replayDigest"])
+
+    def test_process_occurrence_coordinates_do_not_change_replay_identity(self) -> None:
+        def observed_at(stamp: str):
+            def probe(_root: Path, request: dict[str, object]) -> dict[str, object]:
+                result = self._cueprobe_result(request)
+                result["cueprobe"]["commands"] = [{
+                    "state": "exited",
+                    "argv": [f"/machine/{stamp}/cueprobe"],
+                    "cwd": f"/machine/{stamp}/checkout",
+                    "startedAt": stamp,
+                    "finishedAt": stamp,
+                    "exitCode": 0,
+                    "stdout": "observation",
+                    "stderr": "",
+                    "stdoutDigest": "sha256:" + "7" * 64,
+                    "stderrDigest": "sha256:" + "8" * 64,
+                }]
+                return result
+
+            return probe
+
+        left = execute_intent(
+            self.root,
+            self.intent(),
+            source=self.source,
+            probe_executor=observed_at("2026-01-01T00:00:00Z"),
+        )
+        right = execute_intent(
+            self.root,
+            self.intent(),
+            source=self.source,
+            probe_executor=observed_at("2026-01-01T00:00:01Z"),
+        )
+        self.assertEqual(left["rawRecord"]["recordDigest"], right["rawRecord"]["recordDigest"])
+        self.assertEqual(left["replayDigest"], right["replayDigest"])
+        command = left["rawRecord"]["backendObservations"]["cueprobe"]["commands"][0]
+        self.assertEqual(
+            set(command),
+            {"state", "exitCode", "stdoutDigest", "stderrDigest"},
+        )
+
+    def test_manifest_limits_reach_the_probe_request(self) -> None:
+        captured: dict[str, object] = {}
+
+        def probe(_root: Path, request: dict[str, object]) -> dict[str, object]:
+            captured.update(request)
+            return self._cueprobe_result(request)
+
+        execute_intent(self.root, self.intent(), source=self.source, probe_executor=probe)
+        self.assertEqual(
+            captured["extensions"],
+            {
+                "resolutionDigest": resolve_execution(
+                    self.root,
+                    parse_intent(self.intent()),
+                    self.source,
+                )["resolutionDigest"],
+                "operationID": "directional-operation",
+                "orderedSubjectIDs": ["directional-left", "directional-right"],
+                "timeoutMilliseconds": 1000,
+                "maximumOutputBytes": 64 * 1024 * 1024,
+            },
+        )
+
+    def test_runtime_process_states_are_transport_failures(self) -> None:
+        for state in ("timeout", "start-error", "output-limit-exceeded"):
+            def probe(_root: Path, request: dict[str, object], state: str = state) -> dict[str, object]:
+                result = self._cueprobe_result(request)
+                result["cueprobe"]["state"] = state
+                result["cueprobe"]["facts"] = {"available": True}
+                result["cueprobe"]["diagnostics"] = [{"code": state, "message": state}]
+                return result
+
+            replay = execute_intent(
+                self.root,
+                self.intent(),
+                source=self.source,
+                probe_executor=probe,
+            )
+            self.assertEqual(replay["rawRecord"]["observationState"], "transport-failure")
+            self.assertEqual(replay["rawRecord"]["facts"], {})
 
 
 if __name__ == "__main__":

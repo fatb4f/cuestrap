@@ -14,7 +14,7 @@ from models import (
     _reject_claimant_fields,
     parse_probe_request,
 )
-from native import CUE_MODULE_VERSION, CUE_REVISION
+from native import CUE_MODULE_VERSION, CUE_REVISION, NativeBindingUnavailable, verify_cue_cli
 from native_backend import observe_cueprobe
 from .lt01_protocol import (
     Action,
@@ -43,6 +43,8 @@ def _raw(
     backends: Mapping[str, Any] | None = None,
     transport: str = "returned",
 ) -> dict[str, Any]:
+    if action != resolution["action"]:
+        raise ValueError("raw action must match the resolved action")
     fact_values = dict(facts or {})
     diagnostic_values = [dict(item) for item in diagnostics or []]
     if state != "facts-observed" and fact_values:
@@ -83,16 +85,63 @@ def _probe_request(resolution: Mapping[str, Any]) -> dict[str, Any]:
                 resolution["leftSubjectID"],
                 resolution["rightSubjectID"],
             ],
+            "timeoutMilliseconds": resolution["timeoutMilliseconds"],
+            "maximumOutputBytes": resolution["maximumOutputBytes"],
         },
     }
 
 
 def execute_cueprobe(root: Path, request: object) -> dict[str, Any]:
-    observation = observe_cueprobe(root.resolve(strict=True), parse_probe_request(request))
+    parsed = parse_probe_request(request)
+    timeout_milliseconds = parsed.extensions.get("timeoutMilliseconds")
+    maximum_output_bytes = parsed.extensions.get("maximumOutputBytes")
+    if (
+        not isinstance(timeout_milliseconds, int)
+        or isinstance(timeout_milliseconds, bool)
+        or not 0 < timeout_milliseconds <= 300_000
+        or not isinstance(maximum_output_bytes, int)
+        or isinstance(maximum_output_bytes, bool)
+        or not 0 < maximum_output_bytes <= 67_108_864
+    ):
+        raise ValueError("cueprobe execution limits are missing or outside the closed bounds")
+    observation = observe_cueprobe(
+        root.resolve(strict=True),
+        parsed,
+        timeout=timeout_milliseconds / 1000,
+        maximum_output_bytes=maximum_output_bytes,
+    )
     return {
         "schema": RUNNER_OBSERVATION_SCHEMA,
         "cueprobe": observation.model_dump(by_alias=True),
     }
+
+
+def _stable_backend_observations(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain raw facts and stable process evidence without occurrence coordinates."""
+    result: dict[str, Any] = {}
+    for backend, raw_observation in value.items():
+        if not isinstance(raw_observation, Mapping):
+            result[str(backend)] = raw_observation
+            continue
+        observation = dict(raw_observation)
+        commands = observation.get("commands")
+        if isinstance(commands, list):
+            observation["commands"] = [
+                {
+                    key: command[key]
+                    for key in (
+                        "state",
+                        "exitCode",
+                        "stdoutDigest",
+                        "stderrDigest",
+                    )
+                    if isinstance(command, Mapping) and key in command
+                }
+                for command in commands
+                if isinstance(command, Mapping)
+            ]
+        result[str(backend)] = observation
+    return result
 
 
 def _diagnostics(observation: Mapping[str, Any], fallback: str) -> list[dict[str, str]]:
@@ -170,8 +219,9 @@ def execute_intent(
             ],
         )
     else:
-        backends = probe_executor(root.resolve(strict=True), _probe_request(resolution))
-        _reject_claimant_fields(backends, "LT-01 backend result")
+        observed_backends = probe_executor(root.resolve(strict=True), _probe_request(resolution))
+        _reject_claimant_fields(observed_backends, "LT-01 backend result")
+        backends = _stable_backend_observations(observed_backends)
         observation = backends.get("cueprobe", {})
         if not isinstance(observation, Mapping):
             raw = _raw(
@@ -199,7 +249,13 @@ def execute_intent(
                     diagnostics=_diagnostics(observation, "cueprobe capability unavailable"),
                     backends=backends,
                 )
-            elif state in {"process-failure", "timed-out"}:
+            elif state in {
+                "process-failure",
+                "timeout",
+                "timed-out",
+                "start-error",
+                "output-limit-exceeded",
+            }:
                 raw = _raw(
                     resolution,
                     intent.action,
@@ -239,10 +295,28 @@ def derive_judgement(
     root: Path,
     replay: Mapping[str, Any],
     source: Mapping[str, Any],
-    cue_binary: str = "cue",
+    cue_binary: str | None = None,
 ) -> dict[str, Any]:
     resolution, raw = replay["resolution"], replay["rawRecord"]
     ingress = judgement_ingress(resolution, raw, source)
+    try:
+        evaluator = verify_cue_cli(cue_binary)
+    except (NativeBindingUnavailable, OSError) as error:
+        return digest_payload(
+            {
+                "schema": "cuestrap.lt01-cue-derivation-result.v0",
+                "resolutionDigest": resolution["resolutionDigest"],
+                "rawRecordDigest": raw["recordDigest"],
+                "state": "evaluator-identity-failure",
+                "diagnostics": [
+                    {
+                        "code": "cue-evaluator-identity",
+                        "message": str(error)[:4000],
+                    }
+                ],
+            },
+            "resultDigest",
+        )
     expression = (
         "(#JudgementDerivation & {"
         "realization: lt01QualifiedContract.contract.realization, "
@@ -250,7 +324,7 @@ def derive_judgement(
         "}).judgement"
     )
     process = subprocess.run(
-        [cue_binary, "export", "./pattern/s04", "-e", expression],
+        [evaluator["path"], "export", "./pattern/s04", "-e", expression],
         cwd=root.resolve(strict=True),
         capture_output=True,
         text=True,
@@ -261,6 +335,10 @@ def derive_judgement(
         "schema": "cuestrap.lt01-cue-derivation-result.v0",
         "resolutionDigest": resolution["resolutionDigest"],
         "rawRecordDigest": raw["recordDigest"],
+        "derivationInputDigest": ingress["derivationInputDigest"],
+        "evaluator": {
+            key: value for key, value in evaluator.items() if key != "path"
+        },
     }
     if process.returncode:
         base.update(
@@ -273,7 +351,45 @@ def derive_judgement(
             ],
         )
     else:
-        base.update(state="judgement-published", judgement=json.loads(process.stdout))
+        try:
+            judgement = json.loads(process.stdout)
+        except json.JSONDecodeError as error:
+            base.update(
+                state="evaluator-protocol-failure",
+                diagnostics=[
+                    {
+                        "code": "cue-evaluator-json",
+                        "message": str(error)[:4000],
+                    }
+                ],
+            )
+        else:
+            expected_bindings = {
+                "schema": "s04.semantic-judgement.v0",
+                "judgementID": ingress["judgementID"],
+                "derivationInputDigest": ingress["derivationInputDigest"],
+                "evaluator": ingress["evaluator"],
+                "realizationDigest": ingress["realizationDigest"],
+                "caseID": ingress["caseID"],
+                "semanticAuthorityID": ingress["semanticAuthorityID"],
+                "packageDigest": ingress["packageDigest"],
+                "candidateDigest": ingress["candidateDigest"],
+                "observationDigest": ingress["observation"]["sourceRecordDigest"],
+            }
+            if not isinstance(judgement, Mapping) or any(
+                judgement.get(key) != value for key, value in expected_bindings.items()
+            ):
+                base.update(
+                    state="evaluator-protocol-failure",
+                    diagnostics=[
+                        {
+                            "code": "cue-judgement-binding",
+                            "message": "published judgement does not match its derivation ingress",
+                        }
+                    ],
+                )
+            else:
+                base.update(state="judgement-published", judgement=judgement)
     return digest_payload(base, "resultDigest")
 
 
@@ -311,7 +427,7 @@ def qualify_matrix(
         [Path, Mapping[str, Any], Mapping[str, Any]], dict[str, Any]
     ]
     | None = None,
-    cue_binary: str = "cue",
+    cue_binary: str | None = None,
 ) -> dict[str, Any]:
     resolved_source = dict(source or load_resolution_source(root, cue_binary))
     records = [

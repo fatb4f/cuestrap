@@ -23,6 +23,7 @@ def run_process(
     env: Mapping[str, str] | None = None,
     input_bytes: bytes | None = None,
     timeout: float = 60,
+    maximum_output_bytes: int | None = None,
 ) -> ProcessObservation:
     started = _now()
     try:
@@ -50,6 +51,12 @@ def run_process(
         exit_code = None
         stdout = b""
         stderr = f"{type(error).__name__}: {error}".encode()
+    if (
+        maximum_output_bytes is not None
+        and state == "exited"
+        and len(stdout) + len(stderr) > maximum_output_bytes
+    ):
+        state = "output-limit-exceeded"
     return ProcessObservation.model_validate(
         {
             "state": state,
