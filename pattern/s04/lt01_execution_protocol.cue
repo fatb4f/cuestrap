@@ -5,10 +5,20 @@ package s04
 // runtime observation, normalized fact, comparison result, or judgement.
 
 #LT01ExecutionResolutionSource: close({
-	schema:              "s04.lt01-execution-resolution-source.v0"
-	manifest:            #LT01FixtureDesignManifest
-	realization:         #CueRealization
-	package:             #MinimalPPFPackage
+	schema:      "s04.lt01-execution-resolution-source.v0"
+	manifest:    #LT01FixtureDesignManifest
+	realization: #CueRealization
+	package:     #MinimalPPFPackage
+	semanticArtifacts: close({
+		realization: #LT01SemanticArtifactIdentity
+		projection:  #LT01SemanticArtifactIdentity
+		contract:    #LT01SemanticArtifactIdentity
+	})
+	caseBindings: [BindingID=#SafeID]: close({
+		bindingID:         BindingID
+		realizationCaseID: #SafeID
+		packageCaseID:     #SafeID
+	})
 	semanticAuthorityID: #SafeID
 	observerAuthorityID: #SafeID
 	candidates: [CandidateID=#SafeID]: close({
@@ -19,9 +29,24 @@ package s04
 })
 
 lt01ExecutionResolutionSource: #LT01ExecutionResolutionSource & {
-	manifest:            lt01FixtureDesignManifest
-	realization:         lt01QualifiedContract.contract.realization
-	package:             lt01QualifiedContract.contract.package
+	manifest:    lt01FixtureDesignManifest
+	realization: lt01QualifiedContract.contract.realization
+	package:     lt01QualifiedContract.contract.package
+	semanticArtifacts: {
+		realization: {
+			artifactID: lt01RealizationIdentityEvidence.artifactID
+			digest:     lt01RealizationIdentityEvidence.digest
+		}
+		projection: {
+			artifactID: lt01ProjectionIdentityEvidence.artifactID
+			digest:     lt01ProjectionIdentityEvidence.digest
+		}
+		contract: {
+			artifactID: lt01ContractIdentityEvidence.artifactID
+			digest:     lt01ContractIdentityEvidence.digest
+		}
+	}
+	caseBindings:        lt01QualifiedContract.contract.projection.caseBindings
 	semanticAuthorityID: lt01QualifiedContract.contract.projection.authorities.semanticAuthorityID
 	observerAuthorityID: lt01QualifiedContract.contract.projection.authorities.rawObserverAuthorityIDs[0]
 	candidates: {
