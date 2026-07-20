@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -14,6 +18,133 @@ from models import EnvironmentReport, HarnessError, HarnessFailure, ProcessObser
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _terminate(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _run_bounded(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None,
+    input_bytes: bytes | None,
+    timeout: float,
+    maximum_output_bytes: int,
+) -> tuple[str, int | None, bytes, bytes]:
+    if maximum_output_bytes <= 0:
+        raise ValueError("maximum_output_bytes must be positive")
+
+    stdin_file = tempfile.TemporaryFile() if input_bytes is not None else None
+    if stdin_file is not None:
+        stdin_file.write(input_bytes)
+        stdin_file.seek(0)
+
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        process = subprocess.Popen(
+            list(argv),
+            cwd=cwd,
+            env=dict(env) if env is not None else None,
+            stdin=stdin_file,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert process.stdout is not None and process.stderr is not None
+
+        chunks: queue.Queue[tuple[str, bytes]] = queue.Queue(maxsize=4)
+        stop_reading = threading.Event()
+
+        def read_stream(name: str, stream: Any) -> None:
+            while not stop_reading.is_set():
+                try:
+                    chunk = os.read(stream.fileno(), 8192)
+                except OSError:
+                    return
+                if not chunk:
+                    return
+                while not stop_reading.is_set():
+                    try:
+                        chunks.put((name, chunk), timeout=0.01)
+                        break
+                    except queue.Full:
+                        continue
+
+        readers = [
+            threading.Thread(
+                target=read_stream,
+                args=(name, stream),
+                daemon=True,
+            )
+            for name, stream in (
+                ("stdout", process.stdout),
+                ("stderr", process.stderr),
+            )
+        ]
+        for reader in readers:
+            reader.start()
+
+        captured = {"stdout": bytearray(), "stderr": bytearray()}
+        captured_bytes = 0
+        deadline = time.monotonic() + timeout
+        state = "exited"
+
+        while True:
+            remaining_time = deadline - time.monotonic()
+            if remaining_time <= 0 and process.poll() is None:
+                state = "timeout"
+                stop_reading.set()
+                _terminate(process)
+                break
+
+            try:
+                name, chunk = chunks.get(timeout=max(0.001, min(0.01, remaining_time)))
+            except queue.Empty:
+                if process.poll() is not None and not any(
+                    reader.is_alive() for reader in readers
+                ):
+                    break
+                continue
+
+            capture_count = min(
+                len(chunk),
+                maximum_output_bytes + 1 - captured_bytes,
+            )
+            if capture_count > 0:
+                captured[name].extend(chunk[:capture_count])
+                captured_bytes += capture_count
+            if captured_bytes > maximum_output_bytes:
+                state = "output-limit-exceeded"
+                stop_reading.set()
+                _terminate(process)
+                break
+
+        stop_reading.set()
+        process.stdout.close()
+        process.stderr.close()
+        for reader in readers:
+            reader.join(timeout=0.5)
+        if process.poll() is None:
+            _terminate(process)
+        return (
+            state,
+            process.returncode,
+            bytes(captured["stdout"]),
+            bytes(captured["stderr"]),
+        )
+    finally:
+        if process is not None and process.poll() is None:
+            _terminate(process)
+        if stdin_file is not None:
+            stdin_file.close()
 
 
 def run_process(
@@ -27,20 +158,30 @@ def run_process(
 ) -> ProcessObservation:
     started = _now()
     try:
-        completed = subprocess.run(
-            list(argv),
-            cwd=cwd,
-            env=dict(env) if env is not None else None,
-            input=input_bytes,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=timeout,
-        )
-        state = "exited"
-        exit_code: int | None = completed.returncode
-        stdout = completed.stdout
-        stderr = completed.stderr
+        if maximum_output_bytes is None:
+            completed = subprocess.run(
+                list(argv),
+                cwd=cwd,
+                env=dict(env) if env is not None else None,
+                input=input_bytes,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=timeout,
+            )
+            state = "exited"
+            exit_code: int | None = completed.returncode
+            stdout = completed.stdout
+            stderr = completed.stderr
+        else:
+            state, exit_code, stdout, stderr = _run_bounded(
+                argv,
+                cwd=cwd,
+                env=env,
+                input_bytes=input_bytes,
+                timeout=timeout,
+                maximum_output_bytes=maximum_output_bytes,
+            )
     except subprocess.TimeoutExpired as error:
         state = "timeout"
         exit_code = None
@@ -51,12 +192,6 @@ def run_process(
         exit_code = None
         stdout = b""
         stderr = f"{type(error).__name__}: {error}".encode()
-    if (
-        maximum_output_bytes is not None
-        and state == "exited"
-        and len(stdout) + len(stderr) > maximum_output_bytes
-    ):
-        state = "output-limit-exceeded"
     return ProcessObservation.model_validate(
         {
             "state": state,
@@ -65,8 +200,8 @@ def run_process(
             "startedAt": started,
             "finishedAt": _now(),
             "exitCode": exit_code,
-            "stdout": stdout.decode("utf-8", "replace")[:20000],
-            "stderr": stderr.decode("utf-8", "replace")[:20000],
+            "stdout": stdout.decode("utf-8", "replace"),
+            "stderr": stderr.decode("utf-8", "replace"),
             "stdoutDigest": _digest_bytes(stdout),
             "stderrDigest": _digest_bytes(stderr),
         }

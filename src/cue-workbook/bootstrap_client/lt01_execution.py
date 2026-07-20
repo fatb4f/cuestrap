@@ -30,6 +30,7 @@ from .lt01_protocol import (
 
 RAW_SCHEMA = "cuestrap.lt01-raw-execution-record.v0"
 REPLAY_SCHEMA = "cuestrap.lt01-replay-record.v0"
+STABLE_REPLAY_PROJECTION_SCHEMA = "cuestrap.lt01-stable-replay-projection.v0"
 RUNNER_OBSERVATION_SCHEMA = "cuestrap.lt01-cueprobe-observation.v0"
 
 
@@ -116,8 +117,8 @@ def execute_cueprobe(root: Path, request: object) -> dict[str, Any]:
     }
 
 
-def _stable_backend_observations(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Retain raw facts and stable process evidence without occurrence coordinates."""
+def _stable_backend_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project replay-relevant facts without machine-local occurrence coordinates."""
     result: dict[str, Any] = {}
     for backend, raw_observation in value.items():
         if not isinstance(raw_observation, Mapping):
@@ -142,6 +143,30 @@ def _stable_backend_observations(value: Mapping[str, Any]) -> dict[str, Any]:
             ]
         result[str(backend)] = observation
     return result
+
+
+def _stable_replay_projection(
+    resolution: Mapping[str, Any],
+    raw: Mapping[str, Any],
+) -> dict[str, Any]:
+    projection = {
+        "resolutionDigest": resolution["resolutionDigest"],
+        "action": raw["action"],
+        "transportState": raw["transportState"],
+        "observationState": raw["observationState"],
+        "facts": dict(raw["facts"]),
+        "diagnostics": [dict(item) for item in raw["diagnostics"]],
+        "backendObservations": _stable_backend_projection(
+            raw["backendObservations"]
+        ),
+    }
+    value = {
+        "schema": STABLE_REPLAY_PROJECTION_SCHEMA,
+        "rawRecordDigest": raw["recordDigest"],
+        "projection": projection,
+        "projectionDigest": _digest_bytes(_json_bytes(projection)),
+    }
+    return digest_payload(value, "bindingDigest")
 
 
 def _diagnostics(observation: Mapping[str, Any], fallback: str) -> list[dict[str, str]]:
@@ -219,9 +244,8 @@ def execute_intent(
             ],
         )
     else:
-        observed_backends = probe_executor(root.resolve(strict=True), _probe_request(resolution))
-        _reject_claimant_fields(observed_backends, "LT-01 backend result")
-        backends = _stable_backend_observations(observed_backends)
+        backends = probe_executor(root.resolve(strict=True), _probe_request(resolution))
+        _reject_claimant_fields(backends, "LT-01 backend result")
         observation = backends.get("cueprobe", {})
         if not isinstance(observation, Mapping):
             raw = _raw(
@@ -287,7 +311,12 @@ def execute_intent(
                     ),
                     backends=backends,
                 )
-    replay = {"schema": REPLAY_SCHEMA, "resolution": resolution, "rawRecord": raw}
+    replay = {
+        "schema": REPLAY_SCHEMA,
+        "resolution": resolution,
+        "rawRecord": raw,
+        "stableReplayProjection": _stable_replay_projection(resolution, raw),
+    }
     return digest_payload(replay, "replayDigest")
 
 
@@ -408,7 +437,17 @@ def qualification_evidence(
     return digest_payload(
         {
             "schema": "cuestrap.lt01-qualification-evidence.v0",
-            "recordDigests": [item["rawRecord"]["recordDigest"] for item in ordered],
+            "rawRecordDigests": [
+                item["rawRecord"]["recordDigest"] for item in ordered
+            ],
+            "stableReplayProjectionDigests": [
+                item["stableReplayProjection"]["projectionDigest"]
+                for item in ordered
+            ],
+            "stableReplayBindingDigests": [
+                item["stableReplayProjection"]["bindingDigest"]
+                for item in ordered
+            ],
             "replayDigests": [item["replayDigest"] for item in ordered],
             "derivationResultDigests": sorted(
                 item["resultDigest"] for item in derivations

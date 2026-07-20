@@ -141,7 +141,9 @@ jobs:
           assert result["schema"] == "cuestrap.lt01-matrix-qualification.v0"
           assert len(result["records"]) == 9
           assert len(result["derivations"]) == 9
-          assert len(result["evidence"]["recordDigests"]) == 9
+          assert len(result["evidence"]["rawRecordDigests"]) == 9
+          assert len(result["evidence"]["stableReplayProjectionDigests"]) == 9
+          assert len(result["evidence"]["stableReplayBindingDigests"]) == 9
           normal = [
               item for item in result["records"]
               if item["rawRecord"]["action"] == "execute-case"
@@ -163,16 +165,14 @@ jobs:
               "invalid-observation",
           }
           assert all(not item["rawRecord"]["facts"] for item in witnesses)
-          assert all(
-              item["state"] == "judgement-published"
+          states = [item["state"] for item in result["derivations"]]
+          assert states.count("judgement-published") == 5
+          assert states.count("constraint-failure") == 4
+          assert {
+              item["judgement"]["outcome"]
               for item in result["derivations"]
-          )
-          outcomes = [
-              item["judgement"]["outcome"] for item in result["derivations"]
-          ]
-          assert outcomes.count("satisfied") == 5
-          assert outcomes.count("rejected") == 1
-          assert outcomes.count("indeterminate") == 3
+              if item["state"] == "judgement-published"
+          } == {"satisfied"}
           PY
 
       - name: Upload LT-01 execution evidence

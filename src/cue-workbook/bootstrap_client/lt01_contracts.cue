@@ -93,12 +93,35 @@ package bootstrapclient
 	}
 })
 
+#LT01StableReplayProjection: close({
+	schema:           "cuestrap.lt01-stable-replay-projection.v0"
+	rawRecordDigest:  #Digest
+	projectionDigest: #Digest
+	bindingDigest:    #Digest
+	projection: close({
+		resolutionDigest: #Digest
+		action:           #LT01Action
+		transportState:   "returned" | "transport-failure"
+		observationState: #LT01ObservationState
+		facts: [string]: bool
+		diagnostics:         [...close({code: string & !="", message: string & !=""})]
+		backendObservations: _
+	})
+})
+
 #LT01ReplayRecord: close({
 	schema:     "cuestrap.lt01-replay-record.v0"
 	resolution: #LT01ResolvedExecution
 	rawRecord: #LT01RawExecutionRecord & {
 		resolutionDigest: resolution.resolutionDigest
 		action:           resolution.action
+	}
+	stableReplayProjection: #LT01StableReplayProjection & {
+		rawRecordDigest: rawRecord.recordDigest
+		projection: {
+			resolutionDigest: resolution.resolutionDigest
+			action:           resolution.action
+		}
 	}
 	replayDigest: #Digest
 })

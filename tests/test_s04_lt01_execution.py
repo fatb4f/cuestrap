@@ -82,6 +82,10 @@ class LT01ExecutionTests(unittest.TestCase):
                 "normalizationRuleIDs": [f"normalize-{stem}"],
                 "comparisonRuleIDs": [f"compare-{stem}"],
                 "requiredCapabilityIDs": ["cue-subsumes"],
+                "outcomeConstraint": {
+                    "permitted": ["satisfied", "rejected", "indeterminate"],
+                    "required": "satisfied",
+                },
             }
             package_cases[case_id] = {"caseID": case_id}
             bindings[case_id] = {
@@ -306,7 +310,11 @@ class LT01ExecutionTests(unittest.TestCase):
             and record["resolution"]["caseID"] == "reverse-direction-rejection"
         )
         self.assertEqual(reverse["rawRecord"]["facts"], {"subsumes": True})
-        self.assertEqual(len(result["evidence"]["recordDigests"]), 9)
+        self.assertEqual(len(result["evidence"]["rawRecordDigests"]), 9)
+        self.assertEqual(
+            len(result["evidence"]["stableReplayProjectionDigests"]),
+            9,
+        )
 
     def test_unverified_cueprobe_artifact_is_invalid_observation(self) -> None:
         replay = execute_intent(
@@ -347,7 +355,7 @@ class LT01ExecutionTests(unittest.TestCase):
         )
         self.assertNotEqual(left["replayDigest"], right["replayDigest"])
 
-    def test_process_occurrence_coordinates_do_not_change_replay_identity(self) -> None:
+    def test_raw_occurrences_bind_to_one_stable_replay_projection(self) -> None:
         def observed_at(stamp: str):
             def probe(_root: Path, request: dict[str, object]) -> dict[str, object]:
                 result = self._cueprobe_result(request)
@@ -379,12 +387,38 @@ class LT01ExecutionTests(unittest.TestCase):
             source=self.source,
             probe_executor=observed_at("2026-01-01T00:00:01Z"),
         )
-        self.assertEqual(left["rawRecord"]["recordDigest"], right["rawRecord"]["recordDigest"])
-        self.assertEqual(left["replayDigest"], right["replayDigest"])
+        self.assertNotEqual(
+            left["rawRecord"]["recordDigest"],
+            right["rawRecord"]["recordDigest"],
+        )
+        self.assertNotEqual(left["replayDigest"], right["replayDigest"])
+        self.assertEqual(
+            left["stableReplayProjection"]["projectionDigest"],
+            right["stableReplayProjection"]["projectionDigest"],
+        )
+        self.assertNotEqual(
+            left["stableReplayProjection"]["bindingDigest"],
+            right["stableReplayProjection"]["bindingDigest"],
+        )
+        self.assertEqual(
+            left["stableReplayProjection"]["rawRecordDigest"],
+            left["rawRecord"]["recordDigest"],
+        )
         command = left["rawRecord"]["backendObservations"]["cueprobe"]["commands"][0]
         self.assertEqual(
             set(command),
-            {"state", "exitCode", "stdoutDigest", "stderrDigest"},
+            {
+                "state",
+                "argv",
+                "cwd",
+                "startedAt",
+                "finishedAt",
+                "exitCode",
+                "stdout",
+                "stderr",
+                "stdoutDigest",
+                "stderrDigest",
+            },
         )
 
     def test_manifest_limits_reach_the_probe_request(self) -> None:
