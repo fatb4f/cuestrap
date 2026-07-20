@@ -117,18 +117,22 @@ class LT01FixtureDesignTests(unittest.TestCase):
         normalization = realization["normalizationRules"][identities["normalizationRuleID"]]
         self.assertEqual(normalization["observationFactID"], identities["observationFactID"])
         self.assertEqual(operation["produces"], [normalization["observationFactID"]])
+        self.assertEqual(normalization["normalizedPredicate"], payload["operation"])
 
         expected_fact = realization["expectedFacts"][identities["expectedFactID"]]
         claim = realization["claims"][expected_fact["claimID"]]
         self.assertEqual(claim["operands"], ordered_refs)
         self.assertEqual(claim["predicate"], payload["operation"])
         self.assertEqual(expected_fact["predicate"], answer["predicate"])
+        self.assertEqual(normalization["normalizedPredicate"], expected_fact["predicate"])
+        self.assertEqual(claim["predicate"], expected_fact["predicate"])
         self.assertEqual(claim["value"], answer["expectedValue"])
         self.assertEqual(expected_fact["expectedValue"], answer["expectedValue"])
 
         comparison = realization["comparisonRules"][identities["comparisonRuleID"]]
         self.assertEqual(comparison["expectedFactID"], identities["expectedFactID"])
         self.assertEqual(comparison["normalizedFactID"], normalization["normalizedFactID"])
+        self.assertEqual(comparison["operator"], "equals")
 
     def test_qualified_contract_is_publishable(self) -> None:
         contract = self._eval("lt01QualifiedContract.contract")
@@ -265,6 +269,34 @@ class LT01FixtureDesignTests(unittest.TestCase):
         mutated = deepcopy(realization)
         operation = mutated["plans"]["reverse-plan"]["operations"][0]
         operation["left"], operation["right"] = operation["right"], operation["left"]
+        payload, answer = self._load_case_fixture("reverse-direction-rejection")
+
+        with self.assertRaises(AssertionError):
+            self._assert_case_chain(
+                mutated,
+                "reverse-direction-rejection",
+                payload,
+                answer,
+            )
+
+    def test_normalization_predicate_mutation_is_rejected(self) -> None:
+        realization = self._eval("lt01QualifiedContract.contract.realization")
+        mutated = deepcopy(realization)
+        mutated["normalizationRules"]["normalize-reverse"]["normalizedPredicate"] = "different"
+        payload, answer = self._load_case_fixture("reverse-direction-rejection")
+
+        with self.assertRaises(AssertionError):
+            self._assert_case_chain(
+                mutated,
+                "reverse-direction-rejection",
+                payload,
+                answer,
+            )
+
+    def test_comparison_operator_mutation_is_rejected(self) -> None:
+        realization = self._eval("lt01QualifiedContract.contract.realization")
+        mutated = deepcopy(realization)
+        mutated["comparisonRules"]["compare-reverse"]["operator"] = "not-equals"
         payload, answer = self._load_case_fixture("reverse-direction-rejection")
 
         with self.assertRaises(AssertionError):
