@@ -16,7 +16,7 @@ CUE_REVISION = "806821e40fae070318600a264d311517e596353b"
 CUE_MODULE_VERSION = "v0.18.0"
 GOPY_REVISION = "72557f647208599c726c14dc9721a6c850d2e6d9"
 NATIVE_SUFFIXES = frozenset({".so", ".dylib", ".dll", ".pyd"})
-NATIVE_PYTHON_SERIES = (3, 13)
+NATIVE_PYTHON_SERIES = (3, 12)
 
 
 class NativeBindingUnavailable(RuntimeError):
@@ -133,7 +133,7 @@ def native_worker_python(root: Path | None = None) -> Path:
     observed = _python_identity(executable)
     version_info = observed.get("versionInfo")
     if not isinstance(version_info, list) or tuple(version_info[:2]) != NATIVE_PYTHON_SERIES:
-        raise NativeBindingUnavailable(f"native worker Python must be 3.13.x: {observed}")
+        raise NativeBindingUnavailable(f"native worker Python must be 3.12.x: {observed}")
     for field in ("executable", "abi", "version", "versionInfo"):
         if observed.get(field) != declared.get(field):
             raise NativeBindingUnavailable(
