@@ -14,6 +14,11 @@ package s04
 		projection:  #LT01SemanticArtifactIdentity
 		contract:    #LT01SemanticArtifactIdentity
 	})
+	semanticCanonicalJSON: close({
+		realization: bytes
+		projection:  bytes
+		contract:    bytes
+	})
 	caseBindings: [BindingID=#SafeID]: close({
 		bindingID:         BindingID
 		realizationCaseID: #SafeID
@@ -45,6 +50,11 @@ lt01ExecutionResolutionSource: #LT01ExecutionResolutionSource & {
 			artifactID: lt01ContractIdentityEvidence.artifactID
 			digest:     lt01ContractIdentityEvidence.digest
 		}
+	}
+	semanticCanonicalJSON: {
+		realization: lt01RealizationIdentityEvidence.canonicalJSON
+		projection:  lt01ProjectionIdentityEvidence.canonicalJSON
+		contract:    lt01ContractIdentityEvidence.canonicalJSON
 	}
 	caseBindings:        lt01QualifiedContract.contract.projection.caseBindings
 	semanticAuthorityID: lt01QualifiedContract.contract.projection.authorities.semanticAuthorityID
