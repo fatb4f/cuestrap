@@ -29,8 +29,12 @@ def digest(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+def canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
 def digest_json(value: object) -> str:
-    return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+    return digest(canonical_json(value).encode())
 
 
 class LT01ExecutionTests(unittest.TestCase):
@@ -104,24 +108,6 @@ class LT01ExecutionTests(unittest.TestCase):
             "normalizationRules": normal,
             "comparisonRules": compare,
         }
-        semantic_artifacts = {
-            "realization": {"artifactID": "lt01-realization", "digest": digest_json(realization)},
-            "projection": {"artifactID": "lt01-projection", "digest": "sha256:" + "3" * 64},
-            "contract": {"artifactID": "lt01-consumer-profile", "digest": "sha256:" + "4" * 64},
-        }
-        manifest = {
-            "schema": "s04.lt01-fixture-design-manifest.v0",
-            "trackingIssue": 18,
-            "parentIssue": 12,
-            "inputContractDigest": INPUT_CONTRACT_DIGEST,
-            "packageTreeDigest": PACKAGE_DIGEST,
-            "candidateSetDigest": CANDIDATE_SET_DIGEST,
-            "packageRoot": "pattern/s04/fixtures/lt01",
-            "semanticArtifacts": semantic_artifacts,
-            "sourceFiles": {},
-            "produces": ["LT01MinimalPPFPackage.v0"],
-            "nextConsumer": "lt-01-execution-judgement-slice",
-        }
         package = {
             "packageDigest": PACKAGE_DIGEST,
             "metadata": {"limits": {"time_limit": 1, "output": 64}},
@@ -137,11 +123,54 @@ class LT01ExecutionTests(unittest.TestCase):
                 },
             },
         }
+        projection = {
+            "projectionID": "lt01-projection",
+            "caseBindings": bindings,
+        }
+        contract = {
+            "contractID": "lt01-consumer-profile",
+            "realization": realization,
+            "package": package,
+            "projection": projection,
+        }
+        semantic_payloads = {
+            "realization": canonical_json(realization),
+            "projection": canonical_json(projection),
+            "contract": canonical_json(contract),
+        }
+        semantic_artifacts = {
+            "realization": {
+                "artifactID": "lt01-realization",
+                "digest": digest(semantic_payloads["realization"].encode()),
+            },
+            "projection": {
+                "artifactID": "lt01-projection",
+                "digest": digest(semantic_payloads["projection"].encode()),
+            },
+            "contract": {
+                "artifactID": "lt01-consumer-profile",
+                "digest": digest(semantic_payloads["contract"].encode()),
+            },
+        }
+        manifest = {
+            "schema": "s04.lt01-fixture-design-manifest.v0",
+            "trackingIssue": 18,
+            "parentIssue": 12,
+            "inputContractDigest": INPUT_CONTRACT_DIGEST,
+            "packageTreeDigest": PACKAGE_DIGEST,
+            "candidateSetDigest": CANDIDATE_SET_DIGEST,
+            "packageRoot": "pattern/s04/fixtures/lt01",
+            "semanticArtifacts": semantic_artifacts,
+            "sourceFiles": {},
+            "produces": ["LT01MinimalPPFPackage.v0"],
+            "nextConsumer": "lt-01-execution-judgement-slice",
+        }
         return {
             "manifest": manifest,
             "realization": realization,
             "package": package,
             "semanticArtifacts": copy.deepcopy(semantic_artifacts),
+            "semanticCanonicalJSON": semantic_payloads,
             "caseBindings": bindings,
             "semanticAuthorityID": "s04-semantic",
             "observerAuthorityID": "cuestrap-observer",
@@ -234,7 +263,7 @@ class LT01ExecutionTests(unittest.TestCase):
             resolve_execution(self.root, parse_intent(self.intent()), stale_package)
 
         stale_semantic = copy.deepcopy(self.source)
-        stale_semantic["semanticArtifacts"]["projection"]["digest"] = "sha256:" + "0" * 64
+        stale_semantic["semanticCanonicalJSON"]["projection"] += " "
         with self.assertRaises(HarnessError):
             resolve_execution(self.root, parse_intent(self.intent()), stale_semantic)
 
