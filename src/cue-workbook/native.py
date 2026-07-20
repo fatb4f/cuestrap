@@ -4,6 +4,9 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -13,6 +16,7 @@ CUE_REVISION = "806821e40fae070318600a264d311517e596353b"
 CUE_MODULE_VERSION = "v0.18.0"
 GOPY_REVISION = "72557f647208599c726c14dc9721a6c850d2e6d9"
 NATIVE_SUFFIXES = frozenset({".so", ".dylib", ".dll", ".pyd"})
+NATIVE_PYTHON_SERIES = (3, 13)
 
 
 class NativeBindingUnavailable(RuntimeError):
@@ -89,6 +93,54 @@ def build_manifest_digest(root: Path | None = None) -> str:
     if manifest is None:
         raise NativeBindingUnavailable("native build manifest is missing")
     return _digest_file(_manifest_path(root))
+
+
+def _python_identity(executable: Path) -> dict[str, Any]:
+    source = (
+        "import json,sys; "
+        "print(json.dumps({"
+        "'executable': sys.executable, "
+        "'abi': getattr(sys.implementation, 'cache_tag', None), "
+        "'version': sys.version, "
+        "'versionInfo': list(sys.version_info[:3])"
+        "}, sort_keys=True))"
+    )
+    try:
+        raw = subprocess.check_output((str(executable), "-c", source), text=True).strip()
+        value = json.loads(raw)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        raise NativeBindingUnavailable(f"native worker Python identity unavailable: {error}") from error
+    if not isinstance(value, dict):
+        raise NativeBindingUnavailable("native worker Python identity is not an object")
+    return value
+
+
+def native_worker_python(root: Path | None = None) -> Path:
+    manifest = build_manifest(root)
+    if manifest is None:
+        raise NativeBindingUnavailable("native build manifest is missing")
+    declared = manifest.get("python")
+    if not isinstance(declared, dict):
+        raise NativeBindingUnavailable("native build manifest has no worker Python identity")
+    configured = os.environ.get("CUESTRAP_NATIVE_PYTHON")
+    path_value = configured or declared.get("executable")
+    if not isinstance(path_value, str) or not path_value:
+        raise NativeBindingUnavailable("native worker Python executable is missing")
+    try:
+        executable = Path(path_value).expanduser().resolve(strict=True)
+    except OSError as error:
+        raise NativeBindingUnavailable(f"native worker Python is missing: {path_value}") from error
+    observed = _python_identity(executable)
+    version_info = observed.get("versionInfo")
+    if not isinstance(version_info, list) or tuple(version_info[:2]) != NATIVE_PYTHON_SERIES:
+        raise NativeBindingUnavailable(f"native worker Python must be 3.13.x: {observed}")
+    for field in ("executable", "abi", "version", "versionInfo"):
+        if observed.get(field) != declared.get(field):
+            raise NativeBindingUnavailable(
+                f"native worker Python identity mismatch for {field}: "
+                f"declared {declared.get(field)!r}, observed {observed.get(field)!r}"
+            )
+    return executable
 
 
 def verify_extension_artifact(root: Path, extension: Path) -> dict[str, Any]:
