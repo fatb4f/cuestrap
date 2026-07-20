@@ -59,7 +59,9 @@ class LT01ExecutionTests(unittest.TestCase):
 
     @staticmethod
     def probe(_root, request):
-        value = "rejected-reversed-operands.reverse-direction-rejection" not in request["probeID"]
+        reverse = request["probeID"].endswith("reverse-direction-rejection")
+        rejected = "rejected-reversed-operands" in request["probeID"]
+        value = rejected if reverse else True
         return {"schema": "cuestrap.workbook-result.v0", "request": request, "cli": {}, "gopyWorker": {"facts": {"subsumes": value}}, "cueprobe": {"facts": {"subsumes": value}}, "nativeComparison": {"state": "shared-facts-equal"}}
 
     @staticmethod
@@ -87,7 +89,7 @@ class LT01ExecutionTests(unittest.TestCase):
         self.assertEqual({r["rawRecord"]["observationState"] for r in witnesses}, {"transport-failure", "capability-absent", "invalid-observation"})
         self.assertTrue(all(not r["rawRecord"]["facts"] for r in witnesses))
         reverse = next(r for r in normal if r["resolution"]["candidateID"] == "rejected-reversed-operands" and r["resolution"]["caseID"] == "reverse-direction-rejection")
-        self.assertEqual(reverse["rawRecord"]["facts"], {"subsumes": False})
+        self.assertEqual(reverse["rawRecord"]["facts"], {"subsumes": True})
         self.assertEqual(len(result["evidence"]["recordDigests"]), 9)
 
     def test_ingress_contains_no_python_semantic_result(self):
