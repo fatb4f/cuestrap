@@ -23,7 +23,6 @@ CASES = ("directional-success", "reverse-direction-rejection", "adversarial-stru
 
 class Action(StrEnum):
     EXECUTE = "execute-case"
-    REPLAY = "replay-case"
     CAPABILITY = "report-capability-absence"
     TRANSPORT = "report-transport-failure"
     INVALID = "report-invalid-observation"
