@@ -17,7 +17,7 @@ GOPY_REPOSITORY = "https://github.com/go-python/gopy"
 GOPY_REVISION = "72557f647208599c726c14dc9721a6c850d2e6d9"
 GOIMPORTS_VERSION = "v0.38.0"
 BINDING_PACKAGE = "github.com/fatb4f/cuestrap/runner/bindings"
-NATIVE_PYTHON_SERIES = (3, 13)
+NATIVE_PYTHON_SERIES = (3, 12)
 
 
 def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
