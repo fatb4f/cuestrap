@@ -59,7 +59,9 @@ class ExecutionIntent(BaseModel):
 
 def digest_payload(value: Mapping[str, Any], field: str) -> dict[str, Any]:
     result = deepcopy(dict(value))
-    result[field] = _digest_bytes(_json_bytes({key: item for key, item in result.items() if key != field}))
+    result[field] = _digest_bytes(
+        _json_bytes({key: item for key, item in result.items() if key != field})
+    )
     return result
 
 
@@ -73,42 +75,125 @@ def parse_intent(value: object) -> ExecutionIntent:
 def load_resolution_source(root: Path, cue_binary: str = "cue") -> dict[str, Any]:
     process = subprocess.run(
         [cue_binary, "export", "./pattern/s04", "-e", "lt01ExecutionResolutionSource"],
-        cwd=root.resolve(strict=True), capture_output=True, text=True, timeout=60, check=False,
+        cwd=root.resolve(strict=True),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
     if process.returncode:
-        raise HarnessError(HarnessFailure.PROCESS_FAILURE, process.stderr.strip() or "CUE export failed")
+        raise HarnessError(
+            HarnessFailure.PROCESS_FAILURE,
+            process.stderr.strip() or "CUE export failed",
+        )
     try:
         result = json.loads(process.stdout)
     except json.JSONDecodeError as error:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "CUE resolution source was not JSON") from error
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "CUE resolution source was not JSON",
+        ) from error
     if not isinstance(result, dict):
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "resolution source must be an object")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "resolution source must be an object",
+        )
     return result
 
 
-def _validate_handoff(value: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def _validate_handoff(
+    value: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     manifest = value["manifest"]
     realization = value["realization"]
     package = value["package"]
     semantic_artifacts = value["semanticArtifacts"]
+    canonical_json = value["semanticCanonicalJSON"]
 
     if manifest["inputContractDigest"] != INPUT_CONTRACT_DIGEST:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "qualified input contract digest mismatch")
-    if manifest["packageTreeDigest"] != PACKAGE_DIGEST or package["packageDigest"] != PACKAGE_DIGEST:
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "qualified input contract digest mismatch",
+        )
+    if (
+        manifest["packageTreeDigest"] != PACKAGE_DIGEST
+        or package["packageDigest"] != PACKAGE_DIGEST
+    ):
         raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "package tree digest mismatch")
     if manifest["candidateSetDigest"] != CANDIDATE_SET_DIGEST:
         raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate set digest mismatch")
     if semantic_artifacts != manifest["semanticArtifacts"]:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "semantic artifact identities disagree")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "semantic artifact identities disagree",
+        )
+    if not isinstance(canonical_json, Mapping):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "semantic canonical JSON set is missing",
+        )
+
+    parsed_semantics: dict[str, Any] = {}
     for kind, artifact_id in SEMANTIC_ARTIFACT_IDS.items():
-        if semantic_artifacts[kind]["artifactID"] != artifact_id:
-            raise HarnessError(HarnessFailure.INVALID_PROTOCOL, f"{kind} artifact identity mismatch")
-    if semantic_artifacts["realization"]["digest"] != _digest_bytes(_json_bytes(realization)):
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "realization content digest mismatch")
+        artifact = semantic_artifacts[kind]
+        if artifact["artifactID"] != artifact_id:
+            raise HarnessError(
+                HarnessFailure.INVALID_PROTOCOL,
+                f"{kind} artifact identity mismatch",
+            )
+        encoded = canonical_json.get(kind)
+        if not isinstance(encoded, str):
+            raise HarnessError(
+                HarnessFailure.INVALID_PROTOCOL,
+                f"{kind} canonical JSON is missing",
+            )
+        if _digest_bytes(encoded.encode()) != artifact["digest"]:
+            raise HarnessError(
+                HarnessFailure.INVALID_PROTOCOL,
+                f"{kind} canonical content digest mismatch",
+            )
+        try:
+            parsed_semantics[kind] = json.loads(encoded)
+        except json.JSONDecodeError as error:
+            raise HarnessError(
+                HarnessFailure.INVALID_PROTOCOL,
+                f"{kind} canonical JSON is invalid",
+            ) from error
+
+    if parsed_semantics["realization"] != realization:
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "exported realization differs from canonical realization",
+        )
+    projection = parsed_semantics["projection"]
+    if (
+        not isinstance(projection, Mapping)
+        or projection.get("projectionID") != SEMANTIC_ARTIFACT_IDS["projection"]
+        or projection.get("caseBindings") != value["caseBindings"]
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "canonical projection coordinates mismatch",
+        )
+    contract = parsed_semantics["contract"]
+    if (
+        not isinstance(contract, Mapping)
+        or contract.get("contractID") != SEMANTIC_ARTIFACT_IDS["contract"]
+        or contract.get("realization") != realization
+        or contract.get("package") != package
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "canonical contract content mismatch",
+        )
     return dict(manifest), dict(realization), dict(package)
 
 
-def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def resolve_execution(
+    root: Path,
+    intent: ExecutionIntent,
+    source: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     repo = root.resolve(strict=True)
     value = deepcopy(dict(source or load_resolution_source(repo)))
     _reject_claimant_fields(value, "LT-01 resolution source")
@@ -116,34 +201,73 @@ def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, 
 
     binding = value["caseBindings"].get(intent.case_id)
     if not isinstance(binding, dict) or binding.get("bindingID") != intent.case_id:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case binding identity mismatch")
-    if binding.get("realizationCaseID") != intent.case_id or binding.get("packageCaseID") != intent.case_id:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case binding coordinates mismatch")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "case binding identity mismatch",
+        )
+    if (
+        binding.get("realizationCaseID") != intent.case_id
+        or binding.get("packageCaseID") != intent.case_id
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "case binding coordinates mismatch",
+        )
     if intent.case_id not in realization["cases"] or intent.case_id not in package["cases"]:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case is absent from the qualified handoff")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "case is absent from the qualified handoff",
+        )
 
     candidate = value["candidates"][intent.candidate_id]
     package_candidate = package["candidates"][intent.candidate_id]
     expected_source_path = f'{manifest["packageRoot"]}/{package_candidate["sourcePath"]}'
-    if candidate["candidateID"] != intent.candidate_id or candidate["sourcePath"] != expected_source_path:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate coordinates mismatch")
+    if (
+        candidate["candidateID"] != intent.candidate_id
+        or candidate["sourcePath"] != expected_source_path
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "candidate coordinates mismatch",
+        )
     candidate_path = (repo / candidate["sourcePath"]).resolve(strict=True)
     try:
         candidate_path.relative_to(repo)
     except ValueError as error:
-        raise HarnessError(HarnessFailure.PATH_ESCAPE, "candidate path escapes repository") from error
+        raise HarnessError(
+            HarnessFailure.PATH_ESCAPE,
+            "candidate path escapes repository",
+        ) from error
     if _digest_bytes(candidate_path.read_bytes()) != candidate["digest"]:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate content digest mismatch")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "candidate content digest mismatch",
+        )
 
     case = realization["cases"][intent.case_id]
     operations = realization["plans"][case["planID"]]["operations"]
     if len(operations) != 1:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case must resolve to one operation")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "case must resolve to one operation",
+        )
     operation = operations[0]
-    if (operation["kind"], operation["direction"]) != ("subsumes", "left-to-right"):
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "operation is outside LT-01")
-    if operation["left"]["subjectID"] not in case["subjectIDs"] or operation["right"]["subjectID"] not in case["subjectIDs"]:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "ordered operation subjects escape the selected case")
+    if (operation["kind"], operation["direction"]) != (
+        "subsumes",
+        "left-to-right",
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "operation is outside LT-01",
+        )
+    if (
+        operation["left"]["subjectID"] not in case["subjectIDs"]
+        or operation["right"]["subjectID"] not in case["subjectIDs"]
+    ):
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "ordered operation subjects escape the selected case",
+        )
 
     limits = package["metadata"]["limits"]
     result = {
@@ -181,44 +305,77 @@ def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, 
     return digest_payload(result, "resolutionDigest")
 
 
-def observation_record(resolution: Mapping[str, Any], raw: Mapping[str, Any]) -> dict[str, Any]:
+def observation_record(
+    resolution: Mapping[str, Any],
+    raw: Mapping[str, Any],
+) -> dict[str, Any]:
     if raw["resolutionDigest"] != resolution["resolutionDigest"]:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "raw record is not resolution-bound")
+        raise HarnessError(
+            HarnessFailure.INVALID_PROTOCOL,
+            "raw record is not resolution-bound",
+        )
     observation_id = f'{resolution["candidateID"]}-{resolution["caseID"]}-observation'
     facts: dict[str, Any] = {}
     if raw["observationState"] == "facts-observed":
         fact_id = resolution["observationFactID"]
         facts[fact_id] = {
-            "factID": fact_id, "observationID": observation_id,
-            "predicate": resolution["operationKind"], "observedValue": raw["facts"]["subsumes"],
+            "factID": fact_id,
+            "observationID": observation_id,
+            "predicate": resolution["operationKind"],
+            "observedValue": raw["facts"]["subsumes"],
             "sourceRecordDigest": raw["recordDigest"],
         }
     result = {
-        "schema": "s04.observation-record.v0", "observationID": observation_id,
-        "caseID": resolution["caseID"], "observerAuthorityID": resolution["observerAuthorityID"],
-        "sourceRecordDigest": raw["recordDigest"], "state": raw["observationState"], "facts": facts,
+        "schema": "s04.observation-record.v0",
+        "observationID": observation_id,
+        "caseID": resolution["caseID"],
+        "observerAuthorityID": resolution["observerAuthorityID"],
+        "sourceRecordDigest": raw["recordDigest"],
+        "state": raw["observationState"],
+        "facts": facts,
     }
     if raw["diagnostics"]:
         result["diagnostics"] = raw["diagnostics"]
     return result
 
 
-def judgement_ingress(resolution: Mapping[str, Any], raw: Mapping[str, Any], source: Mapping[str, Any]) -> dict[str, Any]:
+def judgement_ingress(
+    resolution: Mapping[str, Any],
+    raw: Mapping[str, Any],
+    source: Mapping[str, Any],
+) -> dict[str, Any]:
     realization = source["realization"]
-    normal = {key: realization["normalizationRules"][key] for key in resolution["normalizationRuleIDs"]}
-    compare = {key: realization["comparisonRules"][key] for key in resolution["comparisonRuleIDs"]}
+    normal = {
+        key: realization["normalizationRules"][key]
+        for key in resolution["normalizationRuleIDs"]
+    }
+    compare = {
+        key: realization["comparisonRules"][key]
+        for key in resolution["comparisonRuleIDs"]
+    }
     result = {
         "requestID": f'{resolution["candidateID"]}-{resolution["caseID"]}-request',
         "judgementID": f'{resolution["candidateID"]}-{resolution["caseID"]}-judgement',
-        "evaluator": {"cueRevision": "806821e40fae070318600a264d311517e596353b", "languageVersion": "v0.18.0", "relationID": "s04.derive-semantic-judgement.v0", "facadeDigest": _digest_bytes(b"s04.derive-semantic-judgement.v0")},
-        "realizationDigest": resolution["realizationDigest"], "caseID": resolution["caseID"],
-        "semanticAuthorityID": resolution["semanticAuthorityID"], "packageDigest": resolution["packageDigest"],
-        "candidateDigest": resolution["candidateDigest"], "observation": observation_record(resolution, raw),
+        "evaluator": {
+            "cueRevision": "806821e40fae070318600a264d311517e596353b",
+            "languageVersion": "v0.18.0",
+            "relationID": "s04.derive-semantic-judgement.v0",
+            "facadeDigest": _digest_bytes(b"s04.derive-semantic-judgement.v0"),
+        },
+        "realizationDigest": resolution["realizationDigest"],
+        "caseID": resolution["caseID"],
+        "semanticAuthorityID": resolution["semanticAuthorityID"],
+        "packageDigest": resolution["packageDigest"],
+        "candidateDigest": resolution["candidateDigest"],
+        "observation": observation_record(resolution, raw),
         "normalizedFactSetID": f'{resolution["candidateID"]}-{resolution["caseID"]}-facts',
-        "normalizedFactSetDigest": _digest_bytes(_json_bytes({"observation": raw["recordDigest"], "rules": normal})),
+        "normalizedFactSetDigest": _digest_bytes(
+            _json_bytes({"observation": raw["recordDigest"], "rules": normal})
+        ),
         "normalizationRuleSetDigest": _digest_bytes(_json_bytes(normal)),
         "comparisonRuleSetDigest": _digest_bytes(_json_bytes(compare)),
-        "normalizationRuleIDs": resolution["normalizationRuleIDs"], "comparisonRuleIDs": resolution["comparisonRuleIDs"],
+        "normalizationRuleIDs": resolution["normalizationRuleIDs"],
+        "comparisonRuleIDs": resolution["comparisonRuleIDs"],
     }
     result["derivationInputDigest"] = _digest_bytes(_json_bytes(result))
     return result
