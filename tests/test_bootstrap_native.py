@@ -20,6 +20,7 @@ class BootstrapNativeTests(unittest.TestCase):
             runner = root / "runner"
             tools = root / "tools"
             extension = root / "workbook" / "cue_native"
+            native_python = root / "python3.13"
             runner.mkdir()
             tools.mkdir()
             extension.parent.mkdir()
@@ -30,6 +31,7 @@ class BootstrapNativeTests(unittest.TestCase):
                 calls.append((args, kwargs.get("cwd")))
                 if args == ("go", "mod", "tidy"):
                     return
+                self.assertIn(f"-vm={native_python}", args)
                 output = next(item.removeprefix("-output=") for item in args if item.startswith("-output="))
                 generated = Path(output)
                 self.assertTrue(generated.is_relative_to(runner))
@@ -37,7 +39,13 @@ class BootstrapNativeTests(unittest.TestCase):
                 (generated / "bindings.py").write_text("# generated\n", encoding="utf-8")
 
             with patch("bootstrap_native.run", side_effect=generate):
-                bootstrap_native.build_extension(root / "gopy", runner, tools, extension)
+                bootstrap_native.build_extension(
+                    root / "gopy",
+                    runner,
+                    tools,
+                    extension,
+                    native_python,
+                )
 
             self.assertTrue((extension / "bindings.py").is_file())
             self.assertFalse((runner / "bin" / "cue_native").exists())
