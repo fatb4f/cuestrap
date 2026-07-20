@@ -52,9 +52,9 @@ lt01ExecutionResolutionSource: #LT01ExecutionResolutionSource & {
 		}
 	}
 	semanticCanonicalJSON: {
-		realization: string(lt01RealizationIdentityEvidence.canonicalJSON)
-		projection:  string(lt01ProjectionIdentityEvidence.canonicalJSON)
-		contract:    string(lt01ContractIdentityEvidence.canonicalJSON)
+		realization: "\(lt01RealizationIdentityEvidence.canonicalJSON)"
+		projection:  "\(lt01ProjectionIdentityEvidence.canonicalJSON)"
+		contract:    "\(lt01ContractIdentityEvidence.canonicalJSON)"
 	}
 	caseBindings:        lt01QualifiedContract.contract.projection.caseBindings
 	semanticAuthorityID: lt01QualifiedContract.contract.projection.authorities.semanticAuthorityID
