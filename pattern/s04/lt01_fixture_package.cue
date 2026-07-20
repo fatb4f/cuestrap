@@ -1,11 +1,22 @@
 package s04
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+)
+
 // Issue #18 fixture-design slice.
 //
 // This value consumes the qualified S04 contract without redefining it. It
 // publishes only package declarations and candidate fixtures; observation,
 // normalization, comparison, and judgement artifacts remain absent until the
 // later execution/judgement slice.
+
+#LT01SemanticArtifactIdentity: close({
+	artifactID: #SafeID
+	digest:     #Digest
+})
 
 #LT01FixtureDesignManifest: close({
 	schema:              "s04.lt01-fixture-design-manifest.v0"
@@ -15,6 +26,11 @@ package s04
 	packageTreeDigest:   #Digest
 	candidateSetDigest:  #Digest
 	packageRoot:         #RelativePath
+	semanticArtifacts: close({
+		realization: #LT01SemanticArtifactIdentity
+		projection:  #LT01SemanticArtifactIdentity
+		contract:    #LT01SemanticArtifactIdentity
+	})
 	sourceFiles: [FileID=#SafeID]: close({
 		path:   #RelativePath
 		digest: #Digest
@@ -26,6 +42,10 @@ package s04
 	]
 	nextConsumer: "lt-01-execution-judgement-slice"
 })
+
+_lt01InputContractDigest: "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217"
+_lt01PackageTreeDigest:   "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
+_lt01CandidateSetDigest:  "sha256:9a2672ff42dd3da4e5956090a683992eec880a70b7a5062003b59cb938710ffe"
 
 lt01Realization: #CueRealization & {
 	schema:        "s04.cue-realization.v0"
@@ -39,7 +59,7 @@ lt01Realization: #CueRealization & {
 				kind:     "cue-module"
 				locator:  "pattern/s04"
 				revision: "3ae2953936b8eee86068516d666b8faec1f5789b"
-				digest:   "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217"
+				digest:   _lt01InputContractDigest
 			}
 		}
 		"lt01-declarer": {
@@ -48,7 +68,7 @@ lt01Realization: #CueRealization & {
 				kind:     "problem-package"
 				locator:  "pattern/s04/fixtures/lt01"
 				revision: "v0"
-				digest:   "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
+				digest:   _lt01PackageTreeDigest
 			}
 		}
 		"cuestrap-observer": {
@@ -288,6 +308,13 @@ lt01Realization: #CueRealization & {
 	}
 }
 
+lt01RealizationIdentityEvidence: {
+	artifactID:       lt01Realization.realizationID
+	canonicalPayload: lt01Realization
+	canonicalJSON:    json.Marshal(canonicalPayload)
+	digest:           "sha256:\(hex.Encode(sha256.Sum256(canonicalJSON)))"
+}
+
 lt01Package: #MinimalPPFPackage & {
 	schema:            "s04.minimal-ppf-package.v0"
 	profileID:         "s04.kattis-ppf-minimal.v0"
@@ -296,7 +323,7 @@ lt01Package: #MinimalPPFPackage & {
 
 	packageID:        "lt01-package"
 	packageDirectory: "lt01"
-	packageDigest:    "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
+	packageDigest:    _lt01PackageTreeDigest
 
 	metadata: {
 		problem_format_version: "2025-09"
@@ -417,12 +444,51 @@ lt01Package: #MinimalPPFPackage & {
 	}
 }
 
+_lt01ProjectionContent: {
+	schema:            "s04.ppf-projection.v0"
+	projectionID:      "lt01-projection"
+	realizationID:     lt01Realization.realizationID
+	realizationDigest: lt01RealizationIdentityEvidence.digest
+	packageID:         lt01Package.packageID
+	packageDigest:     lt01Package.packageDigest
+	authorities: {
+		semanticAuthorityID:        "s04-semantic"
+		packageDeclarerAuthorityID: "lt01-declarer"
+		rawObserverAuthorityIDs:    ["cuestrap-observer"]
+	}
+	caseBindings: {
+		"directional-success": {
+			bindingID:         "directional-success"
+			realizationCaseID: "directional-success"
+			packageCaseID:     "directional-success"
+		}
+		"reverse-direction-rejection": {
+			bindingID:         "reverse-direction-rejection"
+			realizationCaseID: "reverse-direction-rejection"
+			packageCaseID:     "reverse-direction-rejection"
+		}
+		"adversarial-structural": {
+			bindingID:         "adversarial-structural"
+			realizationCaseID: "adversarial-structural"
+			packageCaseID:     "adversarial-structural"
+		}
+	}
+	judgementVocabulary: "s04.semantic-outcome.v0"
+}
+
+lt01ProjectionIdentityEvidence: {
+	artifactID:       _lt01ProjectionContent.projectionID
+	canonicalPayload: _lt01ProjectionContent
+	canonicalJSON:    json.Marshal(canonicalPayload)
+	digest:           "sha256:\(hex.Encode(sha256.Sum256(canonicalJSON)))"
+}
+
 lt01ProjectionRequest: #S04PPFProjectionRequest & {
-	projectionID:               "lt01-projection"
-	projectionDigest:           "sha256:2063465b5525c69a9a76ddd866bb4802e75c58a75d775240facef3c0216e47b2"
-	semanticAuthorityID:        "s04-semantic"
-	packageDeclarerAuthorityID: "lt01-declarer"
-	rawObserverAuthorityIDs:    ["cuestrap-observer"]
+	projectionID:               _lt01ProjectionContent.projectionID
+	projectionDigest:           lt01ProjectionIdentityEvidence.digest
+	semanticAuthorityID:        _lt01ProjectionContent.authorities.semanticAuthorityID
+	packageDeclarerAuthorityID: _lt01ProjectionContent.authorities.packageDeclarerAuthorityID
+	rawObserverAuthorityIDs:    _lt01ProjectionContent.authorities.rawObserverAuthorityIDs
 	caseMap: {
 		"directional-success":         "directional-success"
 		"reverse-direction-rejection": "reverse-direction-rejection"
@@ -432,36 +498,72 @@ lt01ProjectionRequest: #S04PPFProjectionRequest & {
 
 lt01ProjectionDerivation: #S04PPFProjectionDerivation & {
 	realizationArtifact: {
-		digest:      "sha256:e3fe797f82c56ec61a4582b2121557fb94ca322c6a691e6e76e787cf0bd31f1a"
+		digest:      lt01RealizationIdentityEvidence.digest
 		realization: lt01Realization
 	}
 	package: lt01Package
 	request: lt01ProjectionRequest
 }
 
-lt01CandidateContract: #S04ConsumerProfileContract & {
-	schema:         "s04.consumer-profile-contract.v0"
-	contractID:     "lt01-consumer-profile"
-	contractDigest: "sha256:e277d2eb3d328604070a82f5858e55ceb153231f1cc5406352cb354036b0e4de"
-	realization:    lt01Realization
-	package:        lt01Package
-	projection:     lt01ProjectionDerivation.projection
+// Unification with the derivation proves that the content-hashed projection is
+// exactly the projection published by the qualified relation.
+lt01Projection: #S04PPFProjection & _lt01ProjectionContent & {
+	projectionDigest: lt01ProjectionIdentityEvidence.digest
+} & lt01ProjectionDerivation.projection
+
+_lt01ContractContent: {
+	schema:      "s04.consumer-profile-contract.v0"
+	contractID:  "lt01-consumer-profile"
+	realization: lt01Realization
+	package:     lt01Package
+	projection:  lt01Projection
+}
+
+lt01ContractIdentityEvidence: {
+	artifactID:       _lt01ContractContent.contractID
+	canonicalPayload: _lt01ContractContent
+	canonicalJSON:    json.Marshal(canonicalPayload)
+	digest:           "sha256:\(hex.Encode(sha256.Sum256(canonicalJSON)))"
+}
+
+lt01CandidateContract: #S04ConsumerProfileContract & _lt01ContractContent & {
+	contractDigest: lt01ContractIdentityEvidence.digest
 }
 
 lt01QualifiedContract: #QualifiedS04ConsumerProfileContract & {
 	candidateContract: lt01CandidateContract
 	realizationArtifact: {
-		digest:      "sha256:e3fe797f82c56ec61a4582b2121557fb94ca322c6a691e6e76e787cf0bd31f1a"
+		digest:      lt01RealizationIdentityEvidence.digest
 		realization: lt01Realization
 	}
 	projectionRequest: lt01ProjectionRequest
 }
 
+lt01SemanticIdentityEvidence: {
+	realization: lt01RealizationIdentityEvidence
+	projection:  lt01ProjectionIdentityEvidence
+	contract:    lt01ContractIdentityEvidence
+}
+
 lt01FixtureDesignManifest: #LT01FixtureDesignManifest & {
-	inputContractDigest: "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217"
-	packageTreeDigest:   "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
-	candidateSetDigest:  "sha256:9a2672ff42dd3da4e5956090a683992eec880a70b7a5062003b59cb938710ffe"
+	inputContractDigest: _lt01InputContractDigest
+	packageTreeDigest:   _lt01PackageTreeDigest
+	candidateSetDigest:  _lt01CandidateSetDigest
 	packageRoot:         "pattern/s04/fixtures/lt01"
+	semanticArtifacts: {
+		realization: {
+			artifactID: lt01RealizationIdentityEvidence.artifactID
+			digest:     lt01RealizationIdentityEvidence.digest
+		}
+		projection: {
+			artifactID: lt01ProjectionIdentityEvidence.artifactID
+			digest:     lt01ProjectionIdentityEvidence.digest
+		}
+		contract: {
+			artifactID: lt01ContractIdentityEvidence.artifactID
+			digest:     lt01ContractIdentityEvidence.digest
+		}
+	}
 	sourceFiles: {
 		"data-secret-adversarial-structural-ans": {
 			path:   "pattern/s04/fixtures/lt01/data/secret/adversarial-structural.ans"
