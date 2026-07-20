@@ -174,18 +174,34 @@ class LT01ExecutionTests(unittest.TestCase):
         }
 
     @staticmethod
-    def probe(_root: Path, request: dict[str, object]) -> dict[str, object]:
+    def _cueprobe_result(request: dict[str, object], *, verified: bool = True) -> dict[str, object]:
         reverse = str(request["probeID"]).endswith("reverse-direction-rejection")
         rejected = "rejected-reversed-operands" in str(request["probeID"])
         value = rejected if reverse else True
         return {
-            "schema": "cuestrap.workbook-result.v0",
-            "request": request,
-            "cli": {},
-            "gopyWorker": {"facts": {"subsumes": value}},
-            "cueprobe": {"facts": {"subsumes": value}},
-            "nativeComparison": {"state": "shared-facts-equal"},
+            "schema": "cuestrap.lt01-cueprobe-observation.v0",
+            "cueprobe": {
+                "state": "compare",
+                "facts": {"available": True, "subsumes": value},
+                "diagnostics": [],
+                "extensions": {
+                    "cueRevision": "806821e40fae070318600a264d311517e596353b",
+                    "cueModuleVersion": "v0.18.0",
+                    "observedCUEModuleVersion": "v0.18.0",
+                    "artifactManifestVerified": verified,
+                    "buildManifestDigest": "sha256:" + "5" * 64,
+                    "artifactDigest": "sha256:" + "6" * 64,
+                },
+            },
         }
+
+    @classmethod
+    def probe(cls, _root: Path, request: dict[str, object]) -> dict[str, object]:
+        return cls._cueprobe_result(request)
+
+    @classmethod
+    def unverified_probe(cls, _root: Path, request: dict[str, object]) -> dict[str, object]:
+        return cls._cueprobe_result(request, verified=False)
 
     @staticmethod
     def derive(_root: Path, replay: dict[str, object], _source: dict[str, object]) -> dict[str, str]:
@@ -261,6 +277,16 @@ class LT01ExecutionTests(unittest.TestCase):
         )
         self.assertEqual(reverse["rawRecord"]["facts"], {"subsumes": True})
         self.assertEqual(len(result["evidence"]["recordDigests"]), 9)
+
+    def test_unverified_cueprobe_artifact_is_invalid_observation(self) -> None:
+        replay = execute_intent(
+            self.root,
+            self.intent(),
+            source=self.source,
+            probe_executor=self.unverified_probe,
+        )
+        self.assertEqual(replay["rawRecord"]["observationState"], "invalid-observation")
+        self.assertEqual(replay["rawRecord"]["facts"], {})
 
     def test_ingress_contains_no_python_semantic_result(self) -> None:
         replay = execute_intent(
