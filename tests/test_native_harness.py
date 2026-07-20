@@ -50,6 +50,9 @@ class NativeHarnessTests(unittest.TestCase):
             module_root.mkdir(parents=True)
             with patch.dict(
                 "os.environ", {"CUESTRAP_GOPY_MODULE_DIR": str(module_root)}, clear=False
+            ), patch(
+                "native_backend.native_worker_python",
+                return_value=Path("/opt/cuestrap/python3.13"),
             ), patch("native_backend.run_process", return_value=worker) as run_worker:
                 observe_gopy_worker(ROOT, request)
 
