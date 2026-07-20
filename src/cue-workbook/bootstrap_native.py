@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
@@ -18,6 +17,7 @@ GOPY_REPOSITORY = "https://github.com/go-python/gopy"
 GOPY_REVISION = "72557f647208599c726c14dc9721a6c850d2e6d9"
 GOIMPORTS_VERSION = "v0.38.0"
 BINDING_PACKAGE = "github.com/fatb4f/cuestrap/runner/bindings"
+NATIVE_PYTHON_SERIES = (3, 13)
 
 
 def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -51,11 +51,48 @@ def artifact_set_digest(files: list[dict[str, str]]) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def require_pybindgen() -> None:
-    if importlib.util.find_spec("pybindgen") is None:
+def python_identity(executable: Path) -> dict[str, Any]:
+    source = (
+        "import json,sys; "
+        "print(json.dumps({"
+        "'executable': sys.executable, "
+        "'abi': getattr(sys.implementation, 'cache_tag', None), "
+        "'version': sys.version, "
+        "'versionInfo': list(sys.version_info[:3])"
+        "}, sort_keys=True))"
+    )
+    value = json.loads(output(str(executable), "-c", source))
+    if not isinstance(value, dict):
+        raise RuntimeError("Python identity is not an object")
+    return value
+
+
+def resolve_native_python() -> tuple[Path, dict[str, Any]]:
+    configured = os.environ.get("CUESTRAP_NATIVE_PYTHON", sys.executable)
+    executable = Path(configured).expanduser().resolve(strict=True)
+    identity = python_identity(executable)
+    version_info = identity.get("versionInfo")
+    if not isinstance(version_info, list) or tuple(version_info[:2]) != NATIVE_PYTHON_SERIES:
+        required = ".".join(str(value) for value in NATIVE_PYTHON_SERIES)
         raise RuntimeError(
-            "pybindgen is required by gopy but is not present in the locked environment; "
-            "add it to pyproject.toml, regenerate uv.lock, and rerun through `uv run --locked`"
+            f"gopy native worker requires Python {required}.x; "
+            f"set CUESTRAP_NATIVE_PYTHON to the pinned worker interpreter: {identity}"
+        )
+    return executable, identity
+
+
+def require_pybindgen(executable: Path) -> None:
+    process = subprocess.run(
+        (str(executable), "-c", "import pybindgen"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if process.returncode:
+        raise RuntimeError(
+            "pybindgen is required by gopy in the native worker interpreter; "
+            "install pybindgen==0.22.1 into CUESTRAP_NATIVE_PYTHON: "
+            + (process.stderr.strip() or process.stdout.strip())
         )
 
 
@@ -85,7 +122,13 @@ def install_tools(gopy_source: Path, tools: Path) -> Path:
     return binary
 
 
-def build_extension(gopy: Path, runner: Path, tools: Path, extension: Path) -> None:
+def build_extension(
+    gopy: Path,
+    runner: Path,
+    tools: Path,
+    extension: Path,
+    native_python: Path,
+) -> None:
     staged_extension = runner / "bin" / extension.name
     if staged_extension.exists():
         shutil.rmtree(staged_extension)
@@ -93,7 +136,7 @@ def build_extension(gopy: Path, runner: Path, tools: Path, extension: Path) -> N
     run(
         str(gopy),
         "build",
-        f"-vm={sys.executable}",
+        f"-vm={native_python}",
         f"-name={extension.name}",
         f"-output={staged_extension}",
         BINDING_PACKAGE,
@@ -117,20 +160,21 @@ def main() -> int:
     extension = workbook / "cue_native"
     cueprobe = runner / "bin" / ("cueprobe.exe" if os.name == "nt" else "cueprobe")
 
-    require_pybindgen()
+    native_python, native_python_identity = resolve_native_python()
+    require_pybindgen(native_python)
     checkout(cue_source, CUE_REPOSITORY, CUE_REVISION)
     checkout(gopy_source, GOPY_REPOSITORY, GOPY_REVISION)
     require_target_checkout(runner, cue_source)
     run("go", "mod", "tidy", cwd=runner)
     gopy = install_tools(gopy_source, tools)
 
-    build_extension(gopy, runner, tools, extension)
+    build_extension(gopy, runner, tools, extension, native_python)
 
     cueprobe.parent.mkdir(parents=True, exist_ok=True)
     run("go", "build", "-o", str(cueprobe), "./cmd/cueprobe", cwd=runner)
 
     identity_raw = output(
-        sys.executable,
+        str(native_python),
         "-c",
         "from cue_native import bindings; print(bindings.IdentityJSON())",
         cwd=workbook,
@@ -162,11 +206,8 @@ def main() -> int:
             "moduleVersion": CUE_MODULE_VERSION,
         },
         "gopy": {"repository": GOPY_REPOSITORY, "revision": GOPY_REVISION},
-        "python": {
-            "executable": sys.executable,
-            "abi": getattr(sys.implementation, "cache_tag", None),
-            "version": sys.version,
-        },
+        "python": native_python_identity,
+        "controllerPython": python_identity(Path(sys.executable).resolve(strict=True)),
         "go": {"version": output("go", "version")},
         "extension": {
             "identity": identity,
