@@ -90,9 +90,15 @@ jobs:
           "$RUNNER_TEMP/bin/cue" version
 
       - name: Build pinned native artifacts
+        shell: bash
         run: |
+          set +e
           uv run --project . --locked --exact -- \
-            python src/cue-workbook/bootstrap_native.py
+            python src/cue-workbook/bootstrap_native.py \
+            2>&1 | tee /tmp/cuestrap-native-build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
 
       - name: Run Go native tests
         working-directory: runner
@@ -176,6 +182,7 @@ jobs:
         with:
           name: cuestrap-native-qualification-diagnostics
           path: |
+            /tmp/cuestrap-native-build.log
             /tmp/cuestrap-native-probe.json
             /tmp/cuestrap-native-probe.stderr
             /tmp/cuestrap-lt01-execution.json
