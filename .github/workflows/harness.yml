@@ -125,6 +125,44 @@ jobs:
           assert comparison["equivalentEngines"] is True, comparison
           PY
 
+      - name: Execute deterministic LT-01 matrix
+        run: |
+          set +e
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/workbook_cli.py --lt01 \
+              >/tmp/cuestrap-lt01-execution.json \
+              2>/tmp/cuestrap-lt01-execution.stderr
+          status=$?
+          set -e
+          cat /tmp/cuestrap-lt01-execution.json
+          cat /tmp/cuestrap-lt01-execution.stderr >&2
+          test "$status" -eq 0
+          uv run --project . --locked --exact -- python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/cuestrap-lt01-execution.json").read_text())
+          assert result["schema"] == "cuestrap.lt01-matrix-qualification.v0"
+          assert len(result["records"]) == 9
+          assert len(result["derivations"]) == 9
+          assert len(result["evidence"]["recordDigests"]) == 9
+          normal = [
+              item for item in result["records"]
+              if item["rawRecord"]["action"] == "execute-case"
+          ]
+          assert len(normal) == 6
+          PY
+
+      - name: Upload LT-01 execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuestrap-lt01-execution-evidence
+          path: |
+            /tmp/cuestrap-lt01-execution.json
+            /tmp/cuestrap-lt01-execution.stderr
+          if-no-files-found: ignore
+
       - name: Upload native qualification diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -133,4 +171,6 @@ jobs:
           path: |
             /tmp/cuestrap-native-probe.json
             /tmp/cuestrap-native-probe.stderr
+            /tmp/cuestrap-lt01-execution.json
+            /tmp/cuestrap-lt01-execution.stderr
           if-no-files-found: warn
