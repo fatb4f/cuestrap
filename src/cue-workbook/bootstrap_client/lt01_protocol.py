@@ -15,10 +15,16 @@ from models import HarnessError, HarnessFailure, _digest_bytes, _json_bytes, _re
 INTENT_SCHEMA = "cuestrap.lt01-execution-intent.v0"
 RESOLUTION_SCHEMA = "cuestrap.lt01-resolved-execution.v0"
 PROVENANCE_COMMIT = "781801e6500bcef92169b8748ae82166bae56c88"
+INPUT_CONTRACT_DIGEST = "sha256:0b756609d6b5f17be6c062b2ec7e15d1f22be0bece9702a2fea140f1d806e217"
 PACKAGE_DIGEST = "sha256:6fccb0d98d54b1f4d662219076da7e56b8179f95be4680c8c59c035b1823d82e"
 CANDIDATE_SET_DIGEST = "sha256:9a2672ff42dd3da4e5956090a683992eec880a70b7a5062003b59cb938710ffe"
 CANDIDATES = ("accepted-reference", "rejected-reversed-operands")
 CASES = ("directional-success", "reverse-direction-rejection", "adversarial-structural")
+SEMANTIC_ARTIFACT_IDS = {
+    "realization": "lt01-realization",
+    "projection": "lt01-projection",
+    "contract": "lt01-consumer-profile",
+}
 
 
 class Action(StrEnum):
@@ -80,17 +86,47 @@ def load_resolution_source(root: Path, cue_binary: str = "cue") -> dict[str, Any
     return result
 
 
+def _validate_handoff(value: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    manifest = value["manifest"]
+    realization = value["realization"]
+    package = value["package"]
+    semantic_artifacts = value["semanticArtifacts"]
+
+    if manifest["inputContractDigest"] != INPUT_CONTRACT_DIGEST:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "qualified input contract digest mismatch")
+    if manifest["packageTreeDigest"] != PACKAGE_DIGEST or package["packageDigest"] != PACKAGE_DIGEST:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "package tree digest mismatch")
+    if manifest["candidateSetDigest"] != CANDIDATE_SET_DIGEST:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate set digest mismatch")
+    if semantic_artifacts != manifest["semanticArtifacts"]:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "semantic artifact identities disagree")
+    for kind, artifact_id in SEMANTIC_ARTIFACT_IDS.items():
+        if semantic_artifacts[kind]["artifactID"] != artifact_id:
+            raise HarnessError(HarnessFailure.INVALID_PROTOCOL, f"{kind} artifact identity mismatch")
+    if semantic_artifacts["realization"]["digest"] != _digest_bytes(_json_bytes(realization)):
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "realization content digest mismatch")
+    return dict(manifest), dict(realization), dict(package)
+
+
 def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, Any] | None = None) -> dict[str, Any]:
     repo = root.resolve(strict=True)
     value = deepcopy(dict(source or load_resolution_source(repo)))
     _reject_claimant_fields(value, "LT-01 resolution source")
-    manifest, realization, package = value["manifest"], value["realization"], value["package"]
-    if manifest["packageTreeDigest"] != PACKAGE_DIGEST:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "package tree digest mismatch")
-    if manifest["candidateSetDigest"] != CANDIDATE_SET_DIGEST:
-        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate set digest mismatch")
+    manifest, realization, package = _validate_handoff(value)
+
+    binding = value["caseBindings"].get(intent.case_id)
+    if not isinstance(binding, dict) or binding.get("bindingID") != intent.case_id:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case binding identity mismatch")
+    if binding.get("realizationCaseID") != intent.case_id or binding.get("packageCaseID") != intent.case_id:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case binding coordinates mismatch")
+    if intent.case_id not in realization["cases"] or intent.case_id not in package["cases"]:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "case is absent from the qualified handoff")
 
     candidate = value["candidates"][intent.candidate_id]
+    package_candidate = package["candidates"][intent.candidate_id]
+    expected_source_path = f'{manifest["packageRoot"]}/{package_candidate["sourcePath"]}'
+    if candidate["candidateID"] != intent.candidate_id or candidate["sourcePath"] != expected_source_path:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "candidate coordinates mismatch")
     candidate_path = (repo / candidate["sourcePath"]).resolve(strict=True)
     try:
         candidate_path.relative_to(repo)
@@ -106,6 +142,9 @@ def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, 
     operation = operations[0]
     if (operation["kind"], operation["direction"]) != ("subsumes", "left-to-right"):
         raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "operation is outside LT-01")
+    if operation["left"]["subjectID"] not in case["subjectIDs"] or operation["right"]["subjectID"] not in case["subjectIDs"]:
+        raise HarnessError(HarnessFailure.INVALID_PROTOCOL, "ordered operation subjects escape the selected case")
+
     limits = package["metadata"]["limits"]
     result = {
         "schema": RESOLUTION_SCHEMA,
@@ -137,7 +176,7 @@ def resolve_execution(root: Path, intent: ExecutionIntent, source: Mapping[str, 
         "capabilityIDs": list(case["requiredCapabilityIDs"]),
         "timeoutMilliseconds": int(limits["time_limit"] * 1000),
         "maximumOutputBytes": int(limits["output"] * 1024 * 1024),
-        "evidencePath": f'{package["candidates"][intent.candidate_id]["evidencePath"]}/{intent.case_id}',
+        "evidencePath": f'{package_candidate["evidencePath"]}/{intent.case_id}',
     }
     return digest_payload(result, "resolutionDigest")
 
