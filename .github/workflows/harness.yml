@@ -70,9 +70,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up pinned native worker Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+
+      - name: Capture native worker interpreter
+        shell: bash
+        run: |
+          echo "CUESTRAP_NATIVE_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+
+      - name: Set up pinned project Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.14.3"
+
       - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-go@v5
         with:
@@ -81,6 +94,21 @@ jobs:
 
       - name: Synchronize the committed uv project
         run: uv sync --locked
+
+      - name: Install pinned native worker dependencies
+        run: |
+          "$CUESTRAP_NATIVE_PYTHON" -m pip install \
+            --disable-pip-version-check \
+            pybindgen==0.22.1 \
+            pydantic==2.13.4
+          "$CUESTRAP_NATIVE_PYTHON" - <<'PY'
+          import importlib.metadata as metadata
+          import sys
+
+          assert sys.version_info[:3] == (3, 13, 14), sys.version
+          assert metadata.version("pybindgen") == "0.22.1"
+          assert metadata.version("pydantic") == "2.13.4"
+          PY
 
       - name: Build pinned CUE evaluator
         run: |
@@ -107,7 +135,9 @@ jobs:
       - name: Run Python native integration tests
         run: |
           uv run --project . --locked --exact -- \
-            python -m unittest -v tests.test_native_harness
+            python -m unittest -v \
+              tests.test_native_harness \
+              tests.test_native_worker_boundary
 
       - name: Qualify browserless native probe
         run: |
