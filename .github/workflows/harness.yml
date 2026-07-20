@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.14.3"
       - uses: astral-sh/setup-uv@v6
 
       - name: Synchronize the committed uv project
@@ -37,9 +37,15 @@ jobs:
             python -m compileall -q src/cue-workbook tests
 
       - name: Run harness unit tests
+        shell: bash
         run: |
+          set +e
           uv run --project . --locked --exact -- \
-            python -m unittest discover -s tests -v
+            python -m unittest discover -s tests -v \
+            2>&1 | tee /tmp/cuestrap-unit-tests.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
 
       - name: Exercise browserless workbook transport
         run: |
@@ -62,9 +68,123 @@ jobs:
         with:
           name: cuestrap-transport-diagnostics
           path: |
+            /tmp/cuestrap-unit-tests.log
             /tmp/cuestrap-probe.json
             /tmp/cuestrap-probe.stderr
           if-no-files-found: warn
+
+  lt01-execution-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.3"
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Synchronize the committed uv project
+        run: uv sync --locked
+
+      - name: Build pinned CUE evaluator
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" \
+            go install cuelang.org/go/cmd/cue@806821e40fae070318600a264d311517e596353b
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/cue" version
+
+      - name: Validate CUE v0.18 contract surfaces
+        run: |
+          cue fmt --check --files \
+            pattern/s04/*.cue \
+            src/cue-workbook/bootstrap_client/*.cue
+          cue vet ./pattern/s04
+          cue vet -c ./pattern/s04
+          cue vet ./src/cue-workbook/bootstrap_client
+          cue vet -c ./src/cue-workbook/bootstrap_client
+
+      - name: Build pinned cueprobe runner
+        shell: bash
+        run: |
+          set +e
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/bootstrap_cueprobe.py \
+            2>&1 | tee /tmp/cuestrap-cueprobe-build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Run cueprobe Go tests
+        working-directory: runner
+        run: go test ./...
+
+      - name: Execute deterministic LT-01 matrix
+        run: |
+          set +e
+          uv run --project . --locked --exact -- \
+            python src/cue-workbook/workbook_cli.py --lt01 \
+              >/tmp/cuestrap-lt01-execution.json \
+              2>/tmp/cuestrap-lt01-execution.stderr
+          status=$?
+          set -e
+          cat /tmp/cuestrap-lt01-execution.json
+          cat /tmp/cuestrap-lt01-execution.stderr >&2
+          test "$status" -eq 0
+          uv run --project . --locked --exact -- python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("/tmp/cuestrap-lt01-execution.json").read_text())
+          assert result["schema"] == "cuestrap.lt01-matrix-qualification.v0"
+          assert len(result["records"]) == 9
+          assert len(result["derivations"]) == 9
+          assert len(result["evidence"]["rawRecordDigests"]) == 9
+          assert len(result["evidence"]["stableReplayProjectionDigests"]) == 9
+          assert len(result["evidence"]["stableReplayBindingDigests"]) == 9
+          normal = [
+              item for item in result["records"]
+              if item["rawRecord"]["action"] == "execute-case"
+          ]
+          witnesses = [
+              item for item in result["records"]
+              if item["rawRecord"]["action"] != "execute-case"
+          ]
+          assert len(normal) == 6
+          assert all(
+              item["rawRecord"]["observationState"] == "facts-observed"
+              for item in normal
+          )
+          assert {
+              item["rawRecord"]["observationState"] for item in witnesses
+          } == {
+              "transport-failure",
+              "capability-absent",
+              "invalid-observation",
+          }
+          assert all(not item["rawRecord"]["facts"] for item in witnesses)
+          states = [item["state"] for item in result["derivations"]]
+          assert states.count("judgement-published") == 5
+          assert states.count("constraint-failure") == 4
+          assert {
+              item["judgement"]["outcome"]
+              for item in result["derivations"]
+              if item["state"] == "judgement-published"
+          } == {"satisfied"}
+          PY
+
+      - name: Upload LT-01 execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuestrap-lt01-execution-evidence
+          path: |
+            /tmp/cuestrap-cueprobe-build.log
+            /tmp/cuestrap-lt01-execution.json
+            /tmp/cuestrap-lt01-execution.stderr
+          if-no-files-found: error
 
   native-qualification:
     runs-on: ubuntu-latest
@@ -72,7 +192,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.14.3"
       - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-go@v5
         with:

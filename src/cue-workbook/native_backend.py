@@ -133,7 +133,13 @@ def observe_gopy_worker(repo_root: Path, request: ProbeRequest) -> ProbeObservat
     return observation
 
 
-def observe_cueprobe(repo_root: Path, request: ProbeRequest) -> ProbeObservation:
+def observe_cueprobe(
+    repo_root: Path,
+    request: ProbeRequest,
+    *,
+    timeout: float = 60,
+    maximum_output_bytes: int | None = None,
+) -> ProbeObservation:
     payload, subject = _payload(repo_root, request)
     configured = os.environ.get("CUESTRAP_CUEPROBE")
     binary = _cueprobe_path(repo_root, configured, os.name)
@@ -143,7 +149,8 @@ def observe_cueprobe(repo_root: Path, request: ProbeRequest) -> ProbeObservation
         (str(binary),),
         cwd=repo_root,
         input_bytes=_json_bytes(payload),
-        timeout=60,
+        timeout=timeout,
+        maximum_output_bytes=maximum_output_bytes,
     )
     if process.state != "exited" or process.exit_code != 0:
         state = process.state if process.state != "exited" else "process-failure"

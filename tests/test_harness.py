@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -218,6 +220,36 @@ class HarnessTests(unittest.TestCase):
             start_error = run_process(("tool",), cwd=ROOT)
         self.assertEqual(timed_out.state, "timeout")
         self.assertEqual(start_error.state, "start-error")
+
+    def test_process_observation_enforces_the_output_limit(self) -> None:
+        started = time.monotonic()
+        limited = run_process(
+            (
+                sys.executable,
+                "-c",
+                "import sys,time; "
+                "sys.stdout.write('12345'); sys.stdout.flush(); "
+                "sys.stderr.write('67890'); sys.stderr.flush(); "
+                "time.sleep(5)",
+            ),
+            cwd=ROOT,
+            timeout=5,
+            maximum_output_bytes=9,
+        )
+        self.assertEqual(limited.state, "output-limit-exceeded")
+        self.assertEqual(
+            len(limited.stdout.encode()) + len(limited.stderr.encode()),
+            10,
+        )
+        self.assertEqual(
+            limited.stdout_digest,
+            "sha256:" + hashlib.sha256(limited.stdout.encode()).hexdigest(),
+        )
+        self.assertEqual(
+            limited.stderr_digest,
+            "sha256:" + hashlib.sha256(limited.stderr.encode()).hexdigest(),
+        )
+        self.assertLess(time.monotonic() - started, 2)
 
     def test_unavailable_semantic_tools_do_not_fail_architecture_validation(self) -> None:
         environment = Mock()

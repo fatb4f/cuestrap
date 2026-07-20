@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,7 @@ from native import (  # noqa: E402
     NativeBindingUnavailable,
     binding_identity,
     import_bindings,
+    verify_cue_cli,
     verify_cueprobe_artifact,
     verify_extension_artifact,
 )
@@ -29,6 +31,30 @@ from native_validation import execute_native_probe  # noqa: E402
 
 
 class NativeHarnessTests(unittest.TestCase):
+    def test_cue_cli_identity_requires_the_pinned_v018_revision(self) -> None:
+        pinned = subprocess.CompletedProcess(
+            [str(sys.executable), "version"],
+            0,
+            stdout=(
+                "cue version v0.18.0-0.dev.0.20260713230317-806821e40fae\n\n"
+                "CUE language version v0.18.0\n"
+            ),
+            stderr="",
+        )
+        stale = subprocess.CompletedProcess(
+            [str(sys.executable), "version"],
+            0,
+            stdout="cue version v0.18.0\n\nCUE language version v0.18.0\n",
+            stderr="",
+        )
+        with patch("native.subprocess.run", return_value=pinned):
+            identity = verify_cue_cli(str(sys.executable))
+        self.assertEqual(identity["cueRevision"], CUE_REVISION)
+        self.assertEqual(identity["languageVersion"], CUE_MODULE_VERSION)
+        with patch("native.subprocess.run", return_value=stale):
+            with self.assertRaisesRegex(NativeBindingUnavailable, "identity mismatch"):
+                verify_cue_cli(str(sys.executable))
+
     def test_gopy_file_lists_use_the_generated_slice_proxy(self) -> None:
         sentinel = object()
         constructor_calls: list[list[str]] = []

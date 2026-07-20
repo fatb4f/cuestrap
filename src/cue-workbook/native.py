@@ -4,6 +4,9 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -53,6 +56,35 @@ def _digest_file(path: Path) -> str:
     if not path.is_file():
         raise NativeBindingUnavailable(f"native artifact is missing: {path}")
     return _digest_bytes(path.read_bytes())
+
+
+def verify_cue_cli(candidate: str | None = None) -> dict[str, str]:
+    configured = candidate or os.environ.get("CUESTRAP_CUE") or shutil.which("cue")
+    if not configured:
+        raise NativeBindingUnavailable("pinned CUE evaluator is unavailable")
+    binary = Path(configured).resolve(strict=True)
+    process = subprocess.run(
+        (str(binary), "version"),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=10,
+    )
+    output = (process.stdout + "\n" + process.stderr).strip()
+    if process.returncode != 0:
+        raise NativeBindingUnavailable(output or "CUE evaluator version probe failed")
+    if CUE_REVISION[:12] not in output or f"CUE language version {CUE_MODULE_VERSION}" not in output:
+        raise NativeBindingUnavailable(
+            "CUE evaluator identity mismatch: " + output[:1000]
+        )
+    return {
+        "path": str(binary),
+        "cueRevision": CUE_REVISION,
+        "languageVersion": CUE_MODULE_VERSION,
+        "artifactDigest": _digest_file(binary),
+        "versionOutputDigest": _digest_bytes(output.encode()),
+    }
 
 
 def _artifact_set_digest(files: list[dict[str, str]]) -> str:

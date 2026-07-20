@@ -11,21 +11,25 @@ def _():
     import marimo as mo
 
     from harness import (
+        DEFAULT_LT01_INTENT,
         DEFAULT_WORKBOOK_REQUEST,
         DirectSession,
         NativeBindingUnavailable,
         execute_native_probe,
+        qualify_lt01_matrix,
         run_architecture_validation,
         summarize_value,
     )
 
     return (
+        DEFAULT_LT01_INTENT,
         DEFAULT_WORKBOOK_REQUEST,
         DirectSession,
         NativeBindingUnavailable,
         Path,
         execute_native_probe,
         mo,
+        qualify_lt01_matrix,
         run_architecture_validation,
         summarize_value,
     )
@@ -40,9 +44,16 @@ def _(DEFAULT_WORKBOOK_REQUEST, Path):
 
 
 @app.cell
+def _(DEFAULT_LT01_INTENT):
+    lt01_intent = DEFAULT_LT01_INTENT
+    return (lt01_intent,)
+
+
+@app.cell
 def _(mo):
     run_environment = mo.ui.run_button(label="Validate locked environment")
     run_probe = mo.ui.run_button(label="Run qualified native probe")
+    run_lt01 = mo.ui.run_button(label="Qualify deterministic LT-01 matrix")
     direct_source = mo.ui.text_area(
         label="Interactive CUE source",
         value="x: int & >=0\nx: 2",
@@ -56,13 +67,13 @@ def _(mo):
                 "Qualified mode compares an isolated gopy worker with the independent "
                 "`cueprobe` process. Direct mode retains live Go-backed values and is exploratory only."
             ),
-            mo.hstack([run_environment, run_probe]),
+            mo.hstack([run_environment, run_probe, run_lt01]),
             mo.md("## Interactive native surface"),
             direct_source,
             run_direct,
         ]
     )
-    return direct_source, run_direct, run_environment, run_probe
+    return direct_source, run_direct, run_environment, run_lt01, run_probe
 
 
 @app.cell
@@ -101,6 +112,24 @@ def _(
 
 @app.cell
 def _(
+    Path,
+    execution_mode,
+    qualify_lt01_matrix,
+    repo_root,
+    run_lt01,
+):
+    if run_lt01.value or execution_mode == "lt01":
+        try:
+            lt01_result = qualify_lt01_matrix(Path(repo_root))
+        except Exception as error:
+            lt01_result = {"status": "error", "error": f"{type(error).__name__}: {error}"}
+    else:
+        lt01_result = {"status": "pending"}
+    return (lt01_result,)
+
+
+@app.cell
+def _(
     DirectSession,
     NativeBindingUnavailable,
     direct_source,
@@ -132,6 +161,8 @@ def _(
     direct_value,
     environment_result,
     execution_mode,
+    lt01_intent,
+    lt01_result,
     mo,
     probe_result,
     workbook_request,
@@ -145,6 +176,10 @@ def _(
             mo.json(environment_result),
             mo.md("## Qualified observations"),
             mo.json(probe_result),
+            mo.md("## Deterministic LT-01 intent"),
+            mo.json(lt01_intent),
+            mo.md("## LT-01 execution and CUE derivation evidence"),
+            mo.json(lt01_result),
             mo.md("## Direct exploratory observation"),
             mo.json(direct_result),
             mo.md(
