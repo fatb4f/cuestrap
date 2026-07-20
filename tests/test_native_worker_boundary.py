@@ -22,7 +22,7 @@ from native import CUE_MODULE_VERSION, CUE_REVISION, NativeBindingUnavailable  #
 class NativeWorkerBoundaryTests(unittest.TestCase):
     def test_gopy_execution_uses_recorded_worker_interpreter(self) -> None:
         request = parse_probe_request(DEFAULT_WORKBOOK_REQUEST)
-        worker_python = Path("/opt/cuestrap/python3.13")
+        worker_python = Path("/opt/cuestrap/python3.12")
         process = SimpleNamespace(state="exited", exit_code=2, stderr="expected", stdout="")
         with tempfile.TemporaryDirectory() as temporary:
             module_root = Path(temporary) / "cue_native"
@@ -48,13 +48,13 @@ class NativeWorkerBoundaryTests(unittest.TestCase):
     def test_manifest_binds_exact_worker_python_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            executable = root / "python3.13"
+            executable = root / "python3.12"
             executable.write_text("placeholder")
             identity = {
                 "executable": str(executable.resolve()),
-                "abi": "cpython-313",
-                "version": "3.13.14 test",
-                "versionInfo": [3, 13, 14],
+                "abi": "cpython-312",
+                "version": "3.12.10 test",
+                "versionInfo": [3, 12, 10],
             }
             manifest = {
                 "cue": {"revision": CUE_REVISION, "moduleVersion": CUE_MODULE_VERSION},
@@ -68,12 +68,12 @@ class NativeWorkerBoundaryTests(unittest.TestCase):
                 self.assertEqual(native.native_worker_python(root), executable.resolve())
 
             changed = dict(identity)
-            changed["abi"] = "cpython-313-changed"
+            changed["abi"] = "cpython-312-changed"
             with patch("native._python_identity", return_value=changed):
                 with self.assertRaisesRegex(NativeBindingUnavailable, "identity mismatch"):
                     native.native_worker_python(root)
 
-    def test_manifest_rejects_non_313_worker(self) -> None:
+    def test_manifest_rejects_non_312_worker(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             executable = root / "python"
@@ -95,7 +95,7 @@ class NativeWorkerBoundaryTests(unittest.TestCase):
                 )
             )
             with patch("native._python_identity", return_value=identity):
-                with self.assertRaisesRegex(NativeBindingUnavailable, "must be 3.13"):
+                with self.assertRaisesRegex(NativeBindingUnavailable, "must be 3.12"):
                     native.native_worker_python(root)
 
 
