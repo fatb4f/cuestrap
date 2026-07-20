@@ -36,12 +36,17 @@ def _():
 
 
 @app.cell
-def _(DEFAULT_LT01_INTENT, DEFAULT_WORKBOOK_REQUEST, Path):
+def _(DEFAULT_WORKBOOK_REQUEST, Path):
     execution_mode = "interactive"
     repo_root = str(Path.cwd())
     workbook_request = DEFAULT_WORKBOOK_REQUEST
+    return execution_mode, repo_root, workbook_request
+
+
+@app.cell
+def _(DEFAULT_LT01_INTENT):
     lt01_intent = DEFAULT_LT01_INTENT
-    return execution_mode, lt01_intent, repo_root, workbook_request
+    return (lt01_intent,)
 
 
 @app.cell
