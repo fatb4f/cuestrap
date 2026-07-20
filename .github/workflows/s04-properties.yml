@@ -36,12 +36,14 @@ jobs:
           uv run --project . --locked --exact -- \
             python -m compileall -q src tests
 
-      - name: Run S04 property suite
+      - name: Run S04 property and LT-01 fixture suites
         shell: bash
         run: |
           set +e
           uv run --project . --locked --exact -- \
-            python -m unittest -v tests.test_s04_properties \
+            python -m unittest -v \
+              tests.test_s04_properties \
+              tests.test_s04_lt01_fixtures \
             2>&1 | tee "$RUNNER_TEMP/s04-properties.log"
           status=${PIPESTATUS[0]}
           set -e

@@ -1,0 +1,17 @@
+problem_format_version: "2025-09"
+type: pass-fail
+name: "LT-01 Directional CUE Subsumption"
+uuid: "18000000-0000-4000-8000-000000000018"
+source: "CUEstrap S04 issue 18"
+credits:
+  authors:
+    - "CUEstrap"
+license: "permission"
+rights_owner: "CUEstrap"
+limits:
+  time_limit: 1.0
+  memory: 64
+  output: 64
+  validation_time: 1.0
+  validation_memory: 64
+  validation_output: 64
