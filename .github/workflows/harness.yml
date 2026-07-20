@@ -81,7 +81,7 @@ jobs:
       - name: Set up pinned native worker Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13.14"
+          python-version: "3.12.10"
 
       - name: Capture native worker interpreter
         shell: bash
@@ -112,7 +112,7 @@ jobs:
           import importlib.metadata as metadata
           import sys
 
-          assert sys.version_info[:3] == (3, 13, 14), sys.version
+          assert sys.version_info[:3] == (3, 12, 10), sys.version
           assert metadata.version("pybindgen") == "0.22.1"
           assert metadata.version("pydantic") == "2.13.4"
           PY
