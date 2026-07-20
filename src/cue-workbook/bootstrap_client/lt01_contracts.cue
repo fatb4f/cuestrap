@@ -6,7 +6,6 @@ package bootstrapclient
 
 #LT01Action:
 	"execute-case" |
-		"replay-case" |
 		"report-capability-absence" |
 		"report-transport-failure" |
 		"report-invalid-observation"
