@@ -37,21 +37,31 @@ Every mutating session selects exactly one phase. Do not combine implementation,
 | fixture-design | Add or revise durable registered fixtures | Pattern/kernel corrections, runner changes, changing expectations after execution |
 | probe | Implement one reusable semantic operation and its closed request/observation protocol | Pattern or fixture mutation; claimant-authored verdicts |
 | runner | Implement the Go binding facade or independent cueprobe raw execution surface | Admission decisions, pattern edits, fixture redesign |
-| workbook | Improve direct/worker adapters and Marimo orchestration | Pattern-semantic corrections or issue-specific admission logic |
+| workbook | Improve direct/worker adapters and Marimo orchestration | Pattern-semantic corrections or issue-specific semantic authority |
 | execution | Run the workbook and collect raw observations | Source mutations of any kind |
 | diagnosis | Classify failures and propose one correction | Applying the correction |
 | correction | Apply one accepted correction to one owned surface | Redesigning another layer or running a broad fix loop |
 
 ## Scope
 
-The bootstrap scope is one pattern, one minimal kernel projection, one reusable probe family, one native binding boundary, one independent process runner, and one workbook.
+The bootstrap scope is one pattern, one minimal kernel projection, one reusable probe family, one native binding boundary, one independent process runner, and one canonical workbook.
 
-Do not introduce candidate systems, package-wide admission, coverage aggregation, artifact bundles, generalized conformance reports, or knowledge-graph infrastructure.
+The active S04 slice may additionally consume a closed, qualified problem-package handoff when all of the following hold:
+
+- candidate fixtures, cases, semantic artifacts, package tree, and candidate set are content-digest bound by a qualified manifest;
+- the caller selects only a candidate identity and case identity;
+- operation identity, ordered subjects, observer authority, capability requirements, limits, and evidence paths are resolved deterministically from that manifest;
+- the runner emits only raw execution facts, process states, identities, and diagnostics;
+- S04 CUE alone derives normalized facts, comparison results, and semantic judgements;
+- execution, observation, judgement, and qualification evidence are immutable and digest bound;
+- any later model policy is optional, replayable, and outside the semantic trusted computing base.
+
+Do not introduce unqualified candidate systems, open-ended package admission, coverage aggregation, generalized conformance reports, unbound artifact bundles, autonomous remediation, or knowledge-graph infrastructure. Do not create a parallel workbook hierarchy or alternate bootstrap client.
 
 ## Validation discipline
 
 - Durable fixtures belong under the active pattern or probe surface; do not create temporary fixture files beside production CUE.
 - Controlled runtime material may be generated only by the workbook and must not become a second source of truth.
-- Runner and backend observations contain raw facts, diagnostics, identities, and process states. They do not contain `success`, `passed`, `valid`, `complete`, `admitted`, or equivalent claimant verdicts.
+- Runner and backend observations contain raw facts, diagnostics, identities, and process states. They do not contain `success`, `passed`, `valid`, `complete`, `admitted`, `satisfied`, `rejected`, or equivalent claimant verdicts.
 - CUE LSP and gopls observations are advisory. Native CUE API operations remain the semantic execution surface.
 - Before ending a mutating session, run the narrowest structural check for the owned surface. Full-loop execution belongs to a later execution-only session.
